@@ -1,0 +1,3 @@
+将张正友标定法标定好的camera_params.json放入该文件夹，修改step09-step14中第四十行的二维码边长为实际值，即可调用tot_detect.py来使用。
+
+tot_detect.py 中的 getspeed() 能返回机器人的前进速度，水平速度（向右为正方向），转弯角速度（顺时针为正方向）。
