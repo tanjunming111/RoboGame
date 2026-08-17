@@ -1,1 +1,0 @@
-注意修改 camera_calibration 文件中的二维码边长参数，单位是 mm。
