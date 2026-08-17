@@ -1,0 +1,15 @@
+{
+  "field_width_mm": 0,
+  "field_height_mm": 0,
+  "marker_size_mm": 56.0,
+  "markers": {
+    "0": {
+      "position_mm": [
+        0,
+        0,
+        0
+      ],
+      "description": "原点标记"
+    }
+  }
+}
