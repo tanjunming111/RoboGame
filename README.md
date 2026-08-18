@@ -1,3 +1,5 @@
+注意所有 camera_calibration 的修改要在最新版（每个camera_calibration文件夹有标注日期和版本号）中修改！
+
 # 待做事项
 注意在开始前，需要完成以下准备工作。
 
@@ -20,6 +22,10 @@
 1.box_detector_orange.py、box_detector_purple.py 中的颜色HSV阈值
 2.step09_aruco_id1_pose_estimation.py 到 step14_aruco_id1_pose_estimation.py 六个文件中第 40 行的二维码边长
 3.camera_params.json。
+
+## 四、camera_calibration 内容调试
+1.box_detector.py 中需要调试 圆心位置cx,cy、圆形半径 RR 和占比 ratio >= 0.95 的数值 0.95
+2.tot_detect.py 中需要调试角速度修正量，在 getspeed() 中修改
 
 # 项目介绍
 
