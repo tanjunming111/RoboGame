@@ -23,7 +23,7 @@
 - 2.step09_aruco_id1_pose_estimation.py 到 step14_aruco_id1_pose_estimation.py 六个文件中第 40 行的二维码边长
 - 3.camera_params.json。
 
-四、camera_calibration 内容调试
+## 四、camera_calibration 内容调试
 - 1.box_detector.py 中需要调试 圆心位置cx,cy、圆形半径 RR 和占比 ratio >= 0.95 的数值 0.95
 - 2.tot_detect.py 中需要调试角速度修正量，在 getspeed() 中修改
 - 3.吸盘和方块相对高度在giv_high导入（可能需要修改格式），并确定吸盘上升高度的最大值
