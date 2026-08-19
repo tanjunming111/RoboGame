@@ -235,19 +235,23 @@ def main():
     # print("按键：[q]退出  [s]截图")
 
     # ===== 打开摄像头 =====
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
+    cap1 = cv2.VideoCapture(0)
+    cap2 = cv2.VideoCapture(1)
+    if not cap1.isOpened():
         print("[错误] 无法打开摄像头")
         return
 
     # 设置分辨率
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap1.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap1.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap2.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap2.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
     lst_time = time.time()
     while True:
         now = time.time()
-        ret, frame = cap.read()
+        ret, frame = cap1.read()
+        ret_box, frame_box = cap2.read()
         if not ret:
             break
 
@@ -327,7 +331,7 @@ def main():
                 wh.step = 5
                 wh.vx = -0.1
         elif wh.step == 5:
-            if pd_down(frame, "orange"): # 是否检测到摄像头中间偏上部分有方块
+            if pd_down(frame_box, "orange"): # 是否检测到摄像头中间偏上部分有方块
                 wh.vx = 0
                 wh.step = -1 # 抓取
                 wh.nxt = 7
@@ -337,7 +341,7 @@ def main():
                 wh.vx = 0.1
                 wh.step = 6
         elif wh.step == 6:
-            if pd_down(frame, "orange"):
+            if pd_down(frame_box, "orange"):
                 wh.vx = 0
                 wh.step = -1 # 抓取
                 wh.nxt = 7
@@ -423,7 +427,7 @@ def main():
 
         lst_time = now
 
-    cap.release()
+    cap1.release()
     cv2.destroyAllWindows()
 
 
