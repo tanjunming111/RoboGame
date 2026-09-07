@@ -67,7 +67,7 @@ def load_camera_params():
 
 
 def get_detector():
-    """获取ArUco检测器（懒加载+缓存，全局只创建一次）"""
+    # """获取ArUco检测器（懒加载+缓存，全局只创建一次）"""
     global _detector_cache
     if _detector_cache is None:
         aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)

@@ -25,6 +25,7 @@
 import cv2
 import numpy as np
 import time
+import math
 
 # 六个标记模块的位姿接口（ID=1~6 对应 step09~step14）
 from step09_aruco_id1_pose_estimation import (
@@ -34,6 +35,9 @@ from step11_aruco_id3_pose_estimation import get_camera_pose as _pose_id3
 from step12_aruco_id4_pose_estimation import get_camera_pose as _pose_id4
 from step13_aruco_id5_pose_estimation import get_camera_pose as _pose_id5
 from step14_aruco_id6_pose_estimation import get_camera_pose as _pose_id6
+
+# 能否放下爪子的接口
+from box_detector import pd_down
 
 # 标记ID → 对应模块的位姿接口
 _POSE_FUNCS = {
@@ -47,28 +51,40 @@ _POSE_FUNCS = {
 
 class state:
     def __init__(self):
-        self.step = 4
+        self.step = 0
         self.x = 0
         self.y = 0
         self.vx = 0
         self.vy = 0
         self.w = 0 # 角速度，顺时针为正方向
+        self.tn_ag = 0 # 总共转过的角度
+        self.nd_dir = 0 # 理论上正确的方向
         self.bg = False
         self.rot = False
         self.rot_bg = 0
 
         self.ndx = 0
         self.ndy = 0
+        self.catch_ps = 0 # 在二维码左侧还是右侧
+
+        self.slp_time = 0 # 等待时间（等到什么时候）
+        self.nxt = 0 # 下一个内容
+        self.dn_high = 0 # 吸盘高度与方块高度的差（即相对高度）
+        self.dn_v = 0 # 下放速度
+        self.nd_catch = False
+        self.nd_throw = False
 
 wh = state()
 
 def getspeed():
-    # 返回机器人的前进速度，水平速度（向右为正方向），转弯角速度（顺时针为正方向）
-    return wh.vy, wh.vx, wh.w 
+    # 返回机器人的前进速度，水平速度（向右为正方向），转弯角速度（顺时针为正方向），下放速度（负数则为上升速度），吸盘是否抓取，吸盘是否放下
+    return wh.vy, wh.vx, wh.w + 0.1, wh.dn_v, wh.nd_catch, wh.nd_throw # 第三项加的是角速度修正量，需要自行调节
 
+def giv_high(high1):
+    wh.dn_high = high1
 
 def _empty_result():
-    # """未检测到时统一的结果结构（与各模块get_camera_pose未检出时一致）"""
+    # 未检测到时统一的结果结构（与各模块get_camera_pose未检出时一致）
     return {'is_detected': False, 'position_mm': None, 'euler_deg': None,
             'distance_mm': None, 'reproj_error_px': None,
             'rvec': None, 'tvec': None, 'corners': None,
@@ -159,8 +175,50 @@ def _summary_lines(results):
             lines.append(f"{mid}: --- not detected ---")
     return lines
 
+def to_area(tmp):
+    while tmp < 0:
+        tmp += 2 * math.pi
+    while tmp >= 2 * math.pi:
+        tmp -= 2 * math.pi
+        return tmp
+
+def gt_adjust_w(tw, tdir, rs):
+    cnt = 0
+    tmp = 0
+    pi = math.pi
+    if rs[1]['is_detected']:
+        cnt += 1
+        tmp += to_area(rs[1]['euler_deg'][1] - pi / 2)
+    if rs[2]['is_detected']:
+        cnt += 1
+        tmp += to_area(rs[2]['euler_deg'][1])
+    if rs[3]['is_detected']:
+        cnt += 1
+        tmp += to_area(rs[3]['euler_deg'][1] - pi / 2)
+    if rs[4]['is_detected']:
+        cnt += 1
+        tmp += to_area(rs[4]['euler_deg'][1])
+    if rs[5]['is_detected']:
+        cnt += 1
+        tmp += to_area(rs[5]['euler_deg'][1] + pi / 2)
+    if rs[6]['is_detected']:
+        cnt += 1
+        tmp += to_area(rs[6]['euler_deg'][1] + pi)
+
+    if cnt > 0: # 用二维码更新方位
+        tw = tmp / cnt
+        wh.w = tw
+
+    if tw - 0.01 <= tdir <= tw + 0.01:
+        return 0
+    elif tw < tdir:
+        return 1
+    elif tw > tdir:
+        return -1
 
 def main():
+    mx_high = 100 # 这里需要实测修改
+
     # ===== 读取标定参数 =====
     K, D = load_camera_params()
     if K is None:
@@ -177,19 +235,23 @@ def main():
     # print("按键：[q]退出  [s]截图")
 
     # ===== 打开摄像头 =====
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
+    cap1 = cv2.VideoCapture(0)
+    cap2 = cv2.VideoCapture(1)
+    if not cap1.isOpened():
         print("[错误] 无法打开摄像头")
         return
 
     # 设置分辨率
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap1.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap1.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap2.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap2.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-    lst_tim = time.time()
+    lst_time = time.time()
     while True:
         now = time.time()
-        ret, frame = cap.read()
+        ret, frame = cap1.read()
+        ret_box, frame_box = cap2.read()
         if not ret:
             break
 
@@ -216,9 +278,15 @@ def main():
             if r['is_detected']:
                 _draw_result(display, mid, r, K, 56.0)
 
+        # 更新位置和朝向
+        wh.x += (wh.vx * 1000 * math.cos(wh.tn_ag) + wh.vy * 1000 * math.sin(wh.tn_ag)) * (now - lst_time)
+        wh.y += (wh.vx * 1000 * math.sin(wh.tn_ag) + wh.vy * 1000 * math.cos(wh.tn_ag)) * (now - lst_time)
+        wh.tn_ag += wh.w * (now - lst_time)
+
+        if wh.rot == False: # 方向微调
+            wh.w = gt_adjust_w(wh.w, wh.nd_dir * math.pi / 2, rs) * 0.1
+
         if wh.step == 0:
-            wh.x += wh.vx * 1000
-            wh.y += wh.vy * 1000
             if wh.bg == False and rs[1]['is_detected']:
                 wh.y = - rs[1]['position_mm'][0]
                 wh.x = - rs[1]['position_mm'][2]
@@ -229,28 +297,28 @@ def main():
                 wh.x = - rs[1]['position_mm'][2]
             if wh.bg and wh.y >= 0:
                 wh.vy = 0
-                wh.step = 1
+                wh.step = 1 # 开始转弯
                 wh.rot == True
                 wh.rot_bg = now
-                wh.w = 3.14 / 2 / 1
+                wh.w = math.pi / 2 / 2
+                wh.nd_dir = 1
         elif wh.step == 1:
-            if now - wh.rot_bg >= 1000000 or (rs[5]['is_detected'] and rs[5]['euler_deg'][1] >= -1):
+            if now - wh.rot_bg >= 1 or (rs[5]['is_detected'] and rs[5]['euler_deg'][1] >= -1):
                 wh.rot = False
                 wh.w = 0
                 wh.step = 2
                 wh.vy = 0.1
                 wh.ndy = 3100
         elif wh.step == 2:
-            wh.x += wh.vy * 1000
-            wh.y -= wh.vx * 1000
             if rs[6]['is_detected']:
                 wh.ndy = wh.y - rs[6]['position_mm'][0]
-            if wh.y == wh.ndy or (rs[5]['is_detected'] and rs[5]['position_mm'][2] <= 900):
+            if wh.y >= wh.ndy or (rs[5]['is_detected'] and rs[5]['position_mm'][2] <= 900):
                 wh.vy = 0
                 wh.step = 3
                 wh.rot == True
                 wh.rot_bg = now
-                wh.w = - 3.14 / 2 / 1
+                wh.w = - math.pi / 2 / 2
+                wh.nd_dir = 0
         elif wh.step == 3:
             if now - wh.rot_bg >= 1 or (rs[4]['is_detected'] and rs[4]['euler_deg'][1] <= 1):
                 wh.rot = False
@@ -258,14 +326,55 @@ def main():
                 wh.step = 4
                 wh.vy = 0.1
         elif wh.step == 4:
-            wh.x += wh.vx * 1000
-            wh.y += wh.vy * 1000
             if rs[4]['is_detected'] and - rs[4]['position_mm'][2] <= 150:# 距离可能需要修改
                 wh.vy = 0
+                wh.step = 5
+                wh.vx = -0.1
+        elif wh.step == 5:
+            if pd_down(frame_box, "orange"): # 是否检测到摄像头中间偏上部分有方块
+                wh.vx = 0
+                wh.step = -1 # 抓取
+                wh.nxt = 7
+                wh.catch_ps = -1 # 在二维码左侧
+                wh.dn_v = 0.05
+            elif wh.x <= 2350:
+                wh.vx = 0.1
+                wh.step = 6
+        elif wh.step == 6:
+            if pd_down(frame_box, "orange"):
+                wh.vx = 0
+                wh.step = -1 # 抓取
+                wh.nxt = 7
+                wh.catch_ps = 1 # 在二维码右侧
+                wh.dn_v = 0.05
+            elif wh.x >= 3850:
+                wh.vx = -0.1
+                wh.step = 7
+        elif wh.step == -1:
+            if wh.dn_high == 0:
+                wh.dn_v = 0
+                wh.nd_catch = True
+                wh.step = -2
+                wh.slp_time = now + 1
+            # wh.step = 7
+        elif wh.step == -2:
+            if now >= wh.slp_time:
+                wh.nd_catch = False
+                wh.step = -3
+                wh.dn_v = -0.05
+        elif wh.step == -3:
+            if wh.dn_high >= mx_high:
+                wh.dn_v = 0
+                wh.step = wh.nxt
+        elif wh.step == 7: # 返回至 ArUco 4 的位置
+            wh.vx = - wh.catch_ps * 0.1
+            if rs[4]['is_detected'] and rs[4]['position_mm'][0] >= 0:
+                wh.vx = 0
                 wh.step = 10
-                wh.rot == True
+                wh.rot = True
                 wh.rot_bg = now
-                wh.w = - 3.14 / 2 / 1
+                wh.w = - math.pi / 2 / 2
+                wh.nd_dir = 2
         elif wh.step == 10:
             if now - wh.rot_bg >= 2 or (rs[6]['is_detected'] and rs[6]['euler_deg'][1] <= 1):
                 wh.rot = False
@@ -273,11 +382,37 @@ def main():
                 wh.step = 11
                 wh.vy = 0.1
         elif wh.step == 11:
-            wh.x += wh.vx * 1000
-            wh.y -= wh.vy * 1000
-            if rs[6]['is_detected'] and - rs[6]['position_mm'][2] <= 150:# 距离可能需要修改
+            if rs[6]['is_detected'] and - rs[6]['position_mm'][2] <= 150: # 距离可能需要修改
                 wh.vy = 0
-                wh.step = 12
+                wh.step = -11 # 物品放下
+                wh.dn_v = 0.05
+                wh.nxt = 20 # 返回出发点（后面可能还要改）
+        elif wh.step == -11:
+            if wh.dn_high == 0:
+                wh.dn_v = 0
+                wh.nd_throw = True
+                wh.step = -12
+                wh.slp_time = now + 7 # 等待七秒放下
+        elif wh.step == -12:
+            if now >= wh.slp_time:
+                wh.nd_throw = False
+                wh.step = -13
+                wh.dn_v = -0.05
+        elif wh.step == -13:
+            if wh.dn_high >= mx_high:
+                wh.dn_v = 0
+                wh.step = wh.nxt
+        elif wh.step == 12:
+            # wh.rot = True
+            # wh.rot_bg = now
+            # wh.w = -math.pi / 2 / 2
+            if now - wh.rot_bg >= 1 or (rs[4]['is_detected'] and rs[4]['euler_deg'][1] <= 1): # 回头面对二维码4
+                wh.rot = False
+                wh.w = 0
+                wh.step = 13
+        elif wh.step == 20:
+            wh.vx = 0.1
+
                 
         cv2.imshow("tot_detect: 6 ArUco Markers", display)
         print(wh.step, wh.x, wh.y, wh.vx, wh.vy, wh.w)
@@ -292,7 +427,7 @@ def main():
 
         lst_time = now
 
-    cap.release()
+    cap1.release()
     cv2.destroyAllWindows()
 
 

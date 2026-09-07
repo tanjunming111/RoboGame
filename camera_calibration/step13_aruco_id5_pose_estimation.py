@@ -45,7 +45,7 @@ _detector_cache = None       # 缓存ArUco检测器实例
 
 
 def load_camera_params():
-    """读取标定参数（带缓存：只有第一次真正读文件）"""
+    # """读取标定参数（带缓存：只有第一次真正读文件）"""
     global _camera_params_cache
     if _camera_params_cache is not None:
         return _camera_params_cache
