@@ -317,35 +317,86 @@ def gt_adjust_w(tw, tdir, rs):
     return 0
 
 
-def sscmd(cmd):
+def sscmd(cmd,stm32):
+
     if len(cmd) == 6:
+
         vx, vy, vrot, z_dir, fan, dur = cmd
-
         print(f"[DEBUG] Sending command: vx={vx}, vy={vy}, vrot={vrot}, z_dir={z_dir}, fan={fan}, dur={dur}")
-
         start = time.time()
-
         while time.time() - start < dur:
 
-            stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=z_dir, fan=fan)
+            stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
 
+            #cap_down.release()
             time.sleep(0.05)
 
+
     elif len(cmd) == 2:
+
         vx,vy = cmd
+
         stm32.send_move_relative(vx, vy)
+
     
+
     elif len(cmd) == 3:
+
         pdt,_,_ = cmd
+
         if pdt == -1:
+
             return
+
             # wh.stat = False # need to stop the robot
-        
     # Send relative move commands (separate)
 
+    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
-def go_and_get():
-    sscmd((0.5,0,0,0,0,2))
+def gt_photo(wh):
+    cap = cv2.VideoCapture(wh)
+    ret,frame = cap.read()
+    cv2.imshow("show",frame)
+    cap.release()
+
+def go_and_get(stm32):# keep the stuff on the top
+    # front,left,un-clock,up_only_f1_0_1,air_open_01,time
+    cmd = (0.5,0,0,0,0,3.5)
+    vx, vy, vrot, z_dir, fan, dur = cmd
+    fd = False
+    sscmd((0,0,0,1,0,3),stm32)
+    start = time.time()
+    while time.time() - start < dur:
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+        cap_down = cv2.VideoCapture(0)
+        ret,frame = cap_down.read()
+        if pd_down(frame,"orange"):
+           cap_down.release()
+           fd = True
+           break
+        
+        print(pd_down(frame,"orange"),dur)
+        cap_down.release()
+        time.sleep(0.05)
+
+    if fd == False:
+        return
+    
+    sscmd((0,0,0,-1,0,3),stm32)
+    sscmd((0,0,0,0,1,3),stm32)
+    sscmd((0,0,0,1,1,3),stm32)
+    sscmd((0,-20),stm32)
+    sscmd((0,0,0,-1,1,2),stm32)
+
+def get_on_top(stm32):
+    cmd = (0.8,0,0,0,0,2)
+    vx, vy, vrot, z_dir, fan, dur = cmd
+
+def turn_left(stm32):
+    sscmd((0,0,1,0,0,3.65),stm32)
+
+def turn_right(stm32): # for 1/4 round
+    sscmd((0,0,-1,0,0,3.65),stm32)
 
 def main():
 
@@ -424,476 +475,44 @@ def main():
     try:
 
         if USE_VISUAL_CONTROL:
-
-            while True:
-
-                now = time.time()
-
-                ret_f, frame_front = cap_front.read()
-
-                ret_d, frame_down = cap_down.read()
-
-                if not ret_f or not ret_d:
-
-                    print("[WARNING] Failed to read one of the cameras")
-
-                    break
-
-
-
-                # 1. ArUco detection
-
-                results = detect_all(frame=frame_front)
-
-                rs = [None] * 7
-
-                for id, r in sorted(results.items()):
-
-                    rs[id] = r
-
-
-
-                # 2. Display (undistort and draw)
-
-                frame_undist = cv2.undistort(frame_front, K, D)
-
-                display = frame_undist.copy()
-
-                for mid, r in sorted(results.items()):
-
-                    if r['is_detected']:
-
-                        pts = r['corners'].astype(int)
-
-                        for k in range(4):
-
-                            cv2.line(display, tuple(pts[k]), tuple(pts[(k + 1) % 4]), (0, 255, 0), 2)
-
-                        cv2.putText(display, f"ID={mid}", (int(pts[0][0]), int(pts[0][1]) - 10),
-
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-
-
-                # 3. State machine logic (unchanged from original)
-
-                dt = now - lst_time
-
-                wh.x += (wh.vx * 1000 * math.cos(wh.tn_ag) + wh.vy * 1000 * math.sin(wh.tn_ag)) * dt
-
-                wh.y += (wh.vx * 1000 * math.sin(wh.tn_ag) + wh.vy * 1000 * math.cos(wh.tn_ag)) * dt
-
-                wh.tn_ag += wh.w * dt
-
-
-
-                if not wh.rot:
-
-                    wh.w = gt_adjust_w(wh.w, wh.nd_dir * math.pi / 2, rs) * 0.1
-
-
-
-                # Step 0: Initial localization
-
-                if wh.step == 0:
-
-                    if not wh.bg and rs[1] is not None and rs[1]['is_detected']:
-
-                        wh.y = -rs[1]['position_mm'][0]
-
-                        wh.x = -rs[1]['position_mm'][2]
-
-                        wh.bg = True
-
-                        wh.vy = BASE_SPEED
-
-                    if rs[1] is not None and rs[1]['is_detected']:
-
-                        wh.y = -rs[1]['position_mm'][0]
-
-                        wh.x = -rs[1]['position_mm'][2]
-
-                    if wh.bg and wh.y >= 0:
-
-                        wh.vy = 0
-
-                        wh.step = 1
-
-                        wh.rot = True
-
-                        wh.rot_bg = now
-
-                        wh.w = math.pi / 2 / 2
-
-                        wh.nd_dir = 1
-
-
-
-                # Step 1: Turn right
-
-                elif wh.step == 1:
-
-                    if now - wh.rot_bg >= 1 or (rs[5] is not None and rs[5]['is_detected'] and rs[5]['euler_deg'][1] >= -1):
-
-                        wh.rot = False
-
-                        wh.w = 0
-
-                        wh.step = 2
-
-                        wh.vy = BASE_SPEED
-
-                        wh.ndy = 3100
-
-
-
-                # Step 2: Move forward to target
-
-                elif wh.step == 2:
-
-                    if rs[6] is not None and rs[6]['is_detected']:
-
-                        wh.ndy = wh.y - rs[6]['position_mm'][0]
-
-                    if wh.y >= wh.ndy or (rs[5] is not None and rs[5]['is_detected'] and rs[5]['position_mm'][2] <= 900):
-
-                        wh.vy = 0
-
-                        wh.step = 3
-
-                        wh.rot = True
-
-                        wh.rot_bg = now
-
-                        wh.w = -math.pi / 2 / 2
-
-                        wh.nd_dir = 0
-
-
-
-                # Step 3: Turn forward
-
-                elif wh.step == 3:
-
-                    if now - wh.rot_bg >= 1 or (rs[4] is not None and rs[4]['is_detected'] and rs[4]['euler_deg'][1] <= 1):
-
-                        wh.rot = False
-
-                        wh.w = 0
-
-                        wh.step = 4
-
-                        wh.vy = BASE_SPEED
-
-
-
-                # Step 4: Move forward to marker 4
-
-                elif wh.step == 4:
-
-                    if rs[4] is not None and rs[4]['is_detected'] and -rs[4]['position_mm'][2] <= 150:
-
-                        wh.vy = 0
-
-                        wh.step = 5
-
-                        wh.vx = -BASE_SPEED
-
-
-
-                # Step 5: Move left to find block
-
-                elif wh.step == 5:
-
-                    if pd_down(frame_down, "orange"):
-
-                        wh.vx = 0
-
-                        wh.step = -1
-
-                        wh.nxt = 7
-
-                        wh.catch_ps = -1
-
-                        wh.dn_v = 1   # Extend actuator (open-loop direction)
-
-                    elif wh.x <= 2350:
-
-                        wh.vx = BASE_SPEED
-
-                        wh.step = 6
-
-
-
-                # Step 6: Move right to find block
-
-                elif wh.step == 6:
-
-                    if pd_down(frame_down, "orange"):
-
-                        wh.vx = 0
-
-                        wh.step = -1
-
-                        wh.nxt = 7
-
-                        wh.catch_ps = 1
-
-                        wh.dn_v = 1   # Extend
-
-                    elif wh.x >= 3850:
-
-                        wh.vx = -BASE_SPEED
-
-                        wh.step = 7
-
-
-
-                # Step -1: Lower and grab (open-loop, so just extend until stopped)
-
-                elif wh.step == -1:
-
-                    # Assume lowering completes when commanded; we just set dn_v=1 already
-
-                    # Wait a fixed time? For simplicity, we transition based on time or other condition.
-
-                    # In open-loop we don't know position, so use time delay.
-
-                    if wh.dn_high == 0:  # This variable not used now, but keep transition
-
-                        wh.dn_v = 0      # Stop actuator
-
-                        wh.nd_catch = True
-
-                        wh.step = -2
-
-                        wh.slp_time = now + 1
-
-                    # For open-loop, we might need to add a timeout instead.
-
-                    # Here we assume a simple switch after some time has passed.
-
-                    # We'll leave as is but note it may need adjustment.
-
-
-
-                # Step -2: Wait for grab
-
-                elif wh.step == -2:
-
-                    if now >= wh.slp_time:
-
-                        wh.nd_catch = False
-
-                        wh.step = -3
-
-                        wh.dn_v = -1   # Retract actuator
-
-
-
-                # Step -3: Raise (open-loop: retract until stopped)
-
-                elif wh.step == -3:
-
-                    # We cannot know when it reaches top without feedback,
-
-                    # so we wait a fixed time (e.g., 2 seconds) then stop.
-
-                    if now - wh.slp_time > 2:   # crude timeout
-
-                        wh.dn_v = 0
-
-                        wh.step = wh.nxt
-
-
-
-                # Step 7: Return to marker 4
-
-                elif wh.step == 7:
-
-                    wh.vx = -wh.catch_ps * BASE_SPEED
-
-                    if rs[4] is not None and rs[4]['is_detected'] and rs[4]['position_mm'][0] >= 0:
-
-                        wh.vx = 0
-
-                        wh.step = 10
-
-                        wh.rot = True
-
-                        wh.rot_bg = now
-
-                        wh.w = -math.pi / 2 / 2
-
-                        wh.nd_dir = 2
-
-
-
-                # Step 10: Turn backward
-
-                elif wh.step == 10:
-
-                    if now - wh.rot_bg >= 2 or (rs[6] is not None and rs[6]['is_detected'] and rs[6]['euler_deg'][1] <= 1):
-
-                        wh.rot = False
-
-                        wh.w = 0
-
-                        wh.step = 11
-
-                        wh.vy = BASE_SPEED
-
-
-
-                # Step 11: Move backward to drop point
-
-                elif wh.step == 11:
-
-                    if rs[6] is not None and rs[6]['is_detected'] and -rs[6]['position_mm'][2] <= 150:
-
-                        wh.vy = 0
-
-                        wh.step = -11
-
-                        wh.dn_v = 1   # Extend to lower
-
-                        wh.nxt = 20
-
-
-
-                # Step -11: Lower to release
-
-                elif wh.step == -11:
-
-                    # Wait fixed time then stop and release
-
-                    if now - wh.slp_time > 2:   # crude timeout
-
-                        wh.dn_v = 0
-
-                        wh.nd_throw = True
-
-                        wh.step = -12
-
-                        wh.slp_time = now + 7
-
-
-
-                # Step -12: Wait for release
-
-                elif wh.step == -12:
-
-                    if now >= wh.slp_time:
-
-                        wh.nd_throw = False
-
-                        wh.step = -13
-
-                        wh.dn_v = -1   # Retract
-
-
-
-                # Step -13: Raise
-
-                elif wh.step == -13:
-
-                    if now - wh.slp_time > 2:   # crude timeout
-
-                        wh.dn_v = 0
-
-                        wh.step = wh.nxt
-
-
-
-                # Step 20: Final reset
-
-                elif wh.step == 20:
-
-                    wh.vx = BASE_SPEED
-
-
-
-                # 4. Prepare data to send
-
-                c_vy, c_vx, c_w, c_dn_v, c_nd_catch, c_nd_throw = getspeed()
-
-
-
-                # Map actuator direction from float to int (-1,0,1)
-
-                actuator_dir = 0
-
-                if c_dn_v > 0.1:
-
-                    actuator_dir = 1
-
-                elif c_dn_v < -0.1:
-
-                    actuator_dir = -1
-
-
-
-                fan_state = 1 if c_nd_catch else (0 if c_nd_throw else 0)
-
-
-
-                # 5. Send command (no absolute step movement)
-
-                stm32.send_command(
-
-                    vx=c_vy,
-
-                    vy=c_vx,
-
-                    vrot=c_w,
-
-                    x_mm=0.0,   # ignored
-
-                    y_mm=0.0,   # ignored
-
-                    z_dir=actuator_dir,
-
-                    fan=fan_state
-
-                )
-
-
-
-                # Note: Step motors are not moved in this visual logic (assuming fixed positions).
-
-                # If relative movement is needed, call stm32.send_move_relative(dx, dy) at appropriate steps.
-
-
-
-                # 6. Display
-
-                cv2.putText(display, f"Step:{wh.step} X:{wh.x:.0f} Y:{wh.y:.0f}", (10, 30),
-
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-
-                cv2.putText(display, f"Vx:{c_vx:.2f} Vy:{c_vy:.2f} ActDir:{actuator_dir}", (10, 60),
-
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-
-                cv2.imshow("Front Camera - ArUco Navigation", display)
-
-                cv2.imshow("Down Camera - Block Detection", frame_down)
-
-
-
-                if cv2.waitKey(30) & 0xFF == ord('q'):
-
-                    break
-
-                lst_time = now
-
-
+            old_dn = True
 
         else:
 
+            while True:
+
+                sss = input()
+
+                cmd = tuple(map(float,sss.split()))
+
+                sscmd(cmd,stm32)
+
+                # cap_down = cv2.VideoCapture(0)
+
+                # ret,frame = cap_down.read()
+
+                # print(pd_down(frame,"orange"))
+
+                # cap_down.release()
+
+                if(len(cmd) == 1):
+                    vl = cmd[0]
+                    if vl == -1:
+                        break
+                    elif vl == 1:
+                        turn_left(stm32)
+                    elif vl == 2:
+                        turn_right(stm32)
+                    elif vl == 3:
+                        go_and_get(stm32)
+
             # === Manual debug mode ===
 
+            sscmd((0,0,0,0,0,10)) # stop
+
             print("[DEBUG] Starting manual command sequence...")
+
+            return
 
             # Example sequence: move chassis, relative step, actuator
 
@@ -904,40 +523,6 @@ def main():
                 (0 , 0 , 1 , 0 , 0 , 4.6),
 
                 (-1,-1,-1),
-
-                (0,0,0,1,0,2.5),
-
-                (0.5,0,0,0,0,3.0),
-
-                (0.3,0,0,0,0,3),
-
-                (0,30),
-
-                (0,0,0,-1,0,3.0),
-
-                (0,0,0,0.0,1,3.0),
-
-                (0,0,0,1,1,2.5),
-
-                (0,-30)
-
-                (-0.5,0,0,0.0,1,1.5),
-
-                (-0.3,0,0,0.0,1,1.5),
-
-                (0,0,1,0,1,4.6),
-
-                (0.5,0,0,0,1,5.0),
-
-                (0.3,0,0,0,1,5),
-
-                (0,0,0,-1,1,2.5),
-
-                (0,0,0,0,0,3),
-
-                (0,0,0,1,0,2.5),
-
-                (0,0,0,0,0,100),
 
             ]
 
