@@ -95,19 +95,12 @@ CAM_FRONT = 2   # Forward camera
 # Marker ID -> pose function mapping
 
 _POSE_FUNCS = {
-
     1: _pose_id1,
-
     2: _pose_id2,
-
     3: _pose_id3,
-
     4: _pose_id4,
-
     5: _pose_id5,
-
     6: _pose_id6,
-
 }
 
 
@@ -163,7 +156,6 @@ class State:
 wh = State()
 
 mx_high = 100  # Max arm height (not used in open-loop)
-
 
 
 def getspeed():
@@ -226,8 +218,6 @@ def detect_all(frame=None, camera=None, marker_size_mm=None):
 
             return {mid: _empty_result() for mid in _POSE_FUNCS}
 
-
-
     K, D = load_camera_params()
 
     if K is None:
@@ -246,75 +236,60 @@ def detect_all(frame=None, camera=None, marker_size_mm=None):
 
 
 
-def to_area(tmp):
+def _pose_id(tb, frame, K, D):
+    if tb == 1:
+        return _pose_id1(frame=frame, K=K, D=D)
+    elif tb == 2:
+        return _pose_id2(frame=frame, K=K, D=D)
+    elif tb == 3:
+        return _pose_id3(frame=frame, K=K, D=D)
+    elif tb == 4:
+        return _pose_id4(frame=frame, K=K, D=D)
+    elif tb == 5:
+        return _pose_id5(frame=frame, K=K, D=D)
+    elif tb == 6:
+        return _pose_id6(frame=frame, K=K, D=D)
 
-    while tmp < 0:
+def g_left(ta, tb, stm32):
+    K, D = load_camera_params()
+    start = time.time()
+    while time.time() - start < ta:
+        stm32.send_command(0, 0, 0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
+        cap = cv2.VideoCapture(4)
+        ret,frame = cap.read()
+        cv2.imshow("show",frame)
+        cv2.waitKey(1)
+        result = _pose_id(tb, frame, K, D)
+        if result['is_detected']:
+            if result['euler_deg'][1] >= -1:
+                cap.release()
+                break
 
-        tmp += 2 * math.pi
+        cap.release()
+        time.sleep(0.05)
 
-    while tmp >= 2 * math.pi:
-
-        tmp -= 2 * math.pi
-
-    return tmp
-
-
-
-def gt_adjust_w(tw, tdir, rs):
-
-    """Fine-tune angular velocity based on detected markers."""
-
-    cnt = 0
-
-    tmp = 0.0
-
-    pi = math.pi
-
-    if rs[1] is not None and rs[1]['is_detected']:
-
-        cnt += 1; tmp += to_area(rs[1]['euler_deg'][1] - pi / 2)
-
-    if rs[2] is not None and rs[2]['is_detected']:
-
-        cnt += 1; tmp += to_area(rs[2]['euler_deg'][1])
-
-    if rs[3] is not None and rs[3]['is_detected']:
-
-        cnt += 1; tmp += to_area(rs[3]['euler_deg'][1] - pi / 2)
-
-    if rs[4] is not None and rs[4]['is_detected']:
-
-        cnt += 1; tmp += to_area(rs[4]['euler_deg'][1])
-
-    if rs[5] is not None and rs[5]['is_detected']:
-
-        cnt += 1; tmp += to_area(rs[5]['euler_deg'][1] + pi / 2)
-
-    if rs[6] is not None and rs[6]['is_detected']:
-
-        cnt += 1; tmp += to_area(rs[6]['euler_deg'][1] + pi)
+    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 
+def g_right(ta, tb, stm32):
+    K, D = load_camera_params()
+    start = time.time()
+    while time.time() - start < ta:
+        stm32.send_command(0, 0, -0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
+        cap = cv2.VideoCapture(4)
+        ret,frame = cap.read()
+        cv2.imshow("show",frame)
+        cv2.waitKey(1)
+        result = _pose_id(tb, frame, K, D)
+        cap.release()
+        if result['is_detected']:
+            print(111)
+            if result['euler_deg'][1] <= 1:
+                break
 
-    if cnt > 0:
+        time.sleep(0.05)
 
-        tw = tmp / cnt
-
-        wh.w = tw
-
-        if tw - 0.01 <= tdir <= tw + 0.01:
-
-            return 0
-
-        elif tw < tdir:
-
-            return 1
-
-        else:
-
-            return -1
-
-    return 0
+    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 
 def sscmd(cmd,stm32):
@@ -338,29 +313,33 @@ def sscmd(cmd,stm32):
 
         stm32.send_move_relative(vx, vy)
 
-    
-
     elif len(cmd) == 3:
 
-        pdt,_,_ = cmd
+        typ,ta,tb = cmd
+        if typ == 1:
+            g_left(ta, tb, stm32)
+        elif typ == 2:
+            g_right(ta, tb, stm32)
 
-        if pdt == -1:
-
-            return
-
-            # wh.stat = False # need to stop the robot
     # Send relative move commands (separate)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 def gt_photo(wh):
-    cap = cv2.VideoCapture(wh)
+    print(wh)
+    cap = cv2.VideoCapture(0)
+    if wh == 1:
+        cap = cv2.VideoCapture(4)
+    elif wh == 2:
+        cap = cv2.VideoCapture(2)
     ret,frame = cap.read()
     cv2.imshow("show",frame)
+    cv2.waitKey(1)
     cap.release()
 
 def go_and_get(stm32):# keep the stuff on the top
     # front,left,un-clock,up_only_f1_0_1,air_open_01,time
+    sscmd((0, 30), stm32)
     cmd = (0.5,0,0,0,0,3.5)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
@@ -385,18 +364,36 @@ def go_and_get(stm32):# keep the stuff on the top
     sscmd((0,0,0,-1,0,3),stm32)
     sscmd((0,0,0,0,1,3),stm32)
     sscmd((0,0,0,1,1,3),stm32)
-    sscmd((0,-20),stm32)
+    sscmd((0,-30),stm32)
     sscmd((0,0,0,-1,1,2),stm32)
 
 def get_on_top(stm32):
     cmd = (0.8,0,0,0,0,2)
-    vx, vy, vrot, z_dir, fan, dur = cmd
+    sscmd(cmd,stm32)
 
 def turn_left(stm32):
     sscmd((0,0,1,0,0,3.65),stm32)
 
 def turn_right(stm32): # for 1/4 round
     sscmd((0,0,-1,0,0,3.65),stm32)
+
+def go_from_begin(stm32):
+    cmd = (0.5,0,0,0,0,3.5)
+    vx, vy, vrot, z_dir, fan, dur = cmd
+    fd = False
+    start = time.time()
+    while time.time() - start < dur:
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+        cap_down = cv2.VideoCapture(2)
+        ret,frame = cap_down.read()
+        if pd_down(frame,"orange"):
+            cap_down.release()
+            fd = True
+            break
+        
+        print(pd_down(frame,"orange"),dur)
+        cap_down.release()
+        time.sleep(0.05)
 
 def main():
 
@@ -505,6 +502,8 @@ def main():
                         turn_right(stm32)
                     elif vl == 3:
                         go_and_get(stm32)
+                    elif vl == 10 or vl == 11 or vl == 12:
+                        gt_photo(int(vl - 10))
 
             # === Manual debug mode ===
 

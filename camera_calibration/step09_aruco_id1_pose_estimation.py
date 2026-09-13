@@ -37,7 +37,7 @@ import math
 # ===== ArUco 参数 =====
 ARUCO_DICT = cv2.aruco.DICT_APRILTAG_36H11  # ArUco.png实际使用的字典（已验证）
 TARGET_MARKER_ID = 1                        # 本文件只识别 ID=1
-MARKER_SIZE_MM = 56.0                       # 标记打印后的实际边长(mm)，实测后修改！
+MARKER_SIZE_MM = 150.0                       # 标记打印后的实际边长(mm)，实测后修改！
 
 # ===== 模块级缓存（外部反复调用时避免重复读文件/重复创建检测器） =====
 _camera_params_cache = None  # 缓存标定参数 (K, D)
@@ -152,7 +152,7 @@ def get_camera_pose(frame=None, camera=None, marker_size_mm=None, K=None, D=None
     if frame is None:
         temp_camera = None
         if camera is None:
-            temp_camera = cv2.VideoCapture(0)  # 未传入任何图像源→临时打开摄像头
+            temp_camera = cv2.VideoCapture(4)  # 未传入任何图像源→临时打开摄像头
             camera = temp_camera
         ret, frame = camera.read()
         if temp_camera is not None:
@@ -217,6 +217,15 @@ def get_camera_pose(frame=None, camera=None, marker_size_mm=None, K=None, D=None
     distance = float(np.linalg.norm(cam_pos))
     pitch, yaw, roll = matrix_to_euler(T_mc)
 
+    #     is_detected     : bool，是否检测到目标标记
+    #     position_mm     : np.array([x,y,z])，相机在标记坐标系下的位置(mm)，未检测到为None
+    #     euler_deg       : (pitch,yaw,roll)，相机姿态欧拉角(度)，未检测到为None
+    #     distance_mm     : float，相机到标记直线距离(mm)，未检测到为None
+    #     reproj_error_px : float，重投影误差(px)，未检测到为None
+    #     rvec / tvec     : solvePnP原始结果（标记→相机变换），未检测到为None
+    #     corners         : 标记4个角点2D坐标(4,2)，坐标系见detected_on，未检测到为None
+    #     detected_on     : 'undistorted'=畸变校正后图像上检测（标定相机画面，正常情况）
+    #                       'raw'         =原始图像上检测（输入非标定相机图像时的兜底路径）
     result.update({
         'is_detected': True,
         'position_mm': cam_pos,
@@ -258,7 +267,7 @@ def main():
     print("=" * 60)
 
     # ===== 打开摄像头 =====
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(4)
     if not cap.isOpened():
         print("[错误] 无法打开摄像头")
         return
