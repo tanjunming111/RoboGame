@@ -32,8 +32,9 @@ max_gap = 20
 def solve_pd(mask):
     mask_in = mask.copy()
     h, w = mask_in.shape
-    cx, cy = int(w * 0.4), int(h * 0.2)  # 圆心位置（中间偏上）
-    RR = 40 # 半径
+    print("h,w:", h, w)
+    cx, cy = int(w * 0.4), int(h * 0.07)  # 圆心位置（中间偏上）
+    RR = 30 # 半径
 
     # 1.生成圆形掩码
     circle_mask = np.zeros((h, w),dtype = np.uint8)
@@ -104,11 +105,11 @@ def pd_down(frame, str):
                             threshold=hough_thresh,  # 投票阈值，越大越严格
                             minLineLength=min_len,    # 最短线段长度
                             maxLineGap=max_gap)       # 允许的最大间隙
-    line_img = frame.copy()
-    if lines_raw is not None:
-        for line in lines_raw:
-            x1,y1,x2,y2 = line[0]
-            cv2.line(line_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    # line_img = frame.copy()
+    # if lines_raw is not None:
+    #     for line in lines_raw:
+    #         x1,y1,x2,y2 = line[0]
+    #         cv2.line(line_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
     return solve_pd(mask)
 
@@ -159,11 +160,11 @@ def main():
                                 threshold=hough_thresh,  # 投票阈值，越大越严格
                                 minLineLength=min_len,    # 最短线段长度
                                 maxLineGap=max_gap)       # 允许的最大间隙
-        line_img = frame.copy()
-        if lines_raw is not None:
-            for line in lines_raw:
-                x1,y1,x2,y2 = line[0]
-                cv2.line(line_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+        # line_img = frame.copy()
+        # if lines_raw is not None:
+        #     for line in lines_raw:
+        #         x1,y1,x2,y2 = line[0]
+        #         cv2.line(line_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
         pd_down(frame, "orange")
 

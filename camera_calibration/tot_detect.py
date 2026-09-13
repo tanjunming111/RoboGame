@@ -98,7 +98,13 @@ class State:
 
     def __init__(self):
 
-        self.platform = 0
+        self.platform = 0  # platform position
+
+        self.cap0 = None  # down
+        self.cap4 = None  # front
+        self.cap2 = None  # left
+        self.K = None
+        self.D = None
 
         # above is need
 
@@ -239,17 +245,16 @@ def g_left(tim, tb, stm32, sl = 0):
             stm32.send_command(0, 0, 0.5, x_mm=0, y_mm=0, z_dir=0, fan=0)
         else:
             stm32.send_command(0, 0, 0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
-        cap = cv2.VideoCapture(4)
+        cap = wh.cap4
         ret,frame = cap.read()
         cv2.imshow("show",frame)
         cv2.waitKey(1)
         result = _pose_id(tb, frame, K, D)
         if result['is_detected']:
             if result['euler_deg'][1] >= -1:
-                cap.release()
                 break
 
-        cap.release()
+
         time.sleep(0.02)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
@@ -262,12 +267,11 @@ def g_right(tim, tb, stm32, sl = 0):
             stm32.send_command(0, 0, -0.5, x_mm=0, y_mm=0, z_dir=0, fan=0)
         else:
             stm32.send_command(0, 0, -0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
-        cap = cv2.VideoCapture(4)
+        cap = wh.cap4
         ret,frame = cap.read()
         cv2.imshow("show",frame)
         cv2.waitKey(1)
         result = _pose_id(tb, frame, K, D)
-        cap.release()
         if result['is_detected']:
             print(111)
             if result['euler_deg'][1] <= 1:
@@ -288,7 +292,7 @@ def sscmd(cmd,stm32):
 
             stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
 
-            time.sleep(0.05)
+            time.sleep(0.02)
 
 
     elif len(cmd) == 2:
@@ -308,24 +312,22 @@ def sscmd(cmd,stm32):
 
 def gt_photo(wh):
     print(wh)
-    cap = cv2.VideoCapture(0)
+    cap = wh.cap0
     if wh == 1:
-        cap = cv2.VideoCapture(4)
+        cap = wh.cap4
     elif wh == 2:
-        cap = cv2.VideoCapture(2)
+        cap = wh.cap2
     ret,frame = cap.read()
     cv2.imshow("show",frame)
     cv2.waitKey(1)
-    cap.release()
 
 def adjust_clock(tim, tb, stm32):
     K, D = load_camera_params()
-    cap = cv2.VideoCapture(4)
+    cap = wh.cap4
     ret,frame = cap.read()
     cv2.imshow("show",frame)
     cv2.waitKey(1)
     result = _pose_id(tb, frame, K, D)
-    cap.release()
     if result['is_detected'] == False:
         print("not detect")
         return
@@ -342,17 +344,15 @@ def go_and_get(stm32):# keep the stuff on the top
     fd = False
     sscmd((0,0,0,1,0,3),stm32)
     start = time.time()
+    cap_down = wh.cap0
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
-        cap_down = cv2.VideoCapture(0)
         ret,frame = cap_down.read()
         if pd_down(frame,"orange"):
-           cap_down.release()
            fd = True
            break
         
         print(pd_down(frame,"orange"),dur)
-        cap_down.release()
         time.sleep(0.02)
 
     if fd == False:
@@ -382,14 +382,13 @@ def go_from_begin(stm32):
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     start = time.time()
+    cap = wh.cap4
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
-        cap = cv2.VideoCapture(4)
         ret,frame = cap.read()
         cv2.imshow("show",frame)
         cv2.waitKey(1)
         result = _pose_id(1, frame, K, D)
-        cap.release()
         if result['is_detected']:
             print(111)
             if result['euler_deg'][1] <= 1:
@@ -401,7 +400,6 @@ def go_from_begin(stm32):
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 
-
 def find_and_catch(clr, stm32):
     # Move forward until the block is detected, then catch it
     ### have to guarantee that the catcher went ahead
@@ -409,7 +407,9 @@ def find_and_catch(clr, stm32):
     if clr == 1:
         str = "purple"
     ztim = 3
-    sscmd((0, 0, 0, 1, 0, 3), stm32)
+    ups = 3
+    dwns = 2.7
+    sscmd((0, 0, 0, 1, 0, ups), stm32)
     sscmd((0.5, 0, 0, 0, 0, 1), stm32)
     sscmd((0.35, 0, 0, 0, 0, 1), stm32)
     # sscmd((0, 30), stm32)             # Move ahead
@@ -417,28 +417,26 @@ def find_and_catch(clr, stm32):
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     th_time = 0
+    cap_down = wh.cap0
     start = time.time()
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
-        cap_down = cv2.VideoCapture(0)
         ret, frame = cap_down.read()
         cv2.imshow("show",frame)
         cv2.waitKey(1)
         if pd_down(frame,str):
             th_time = time.time() - start
-            cap_down.release()
             fd = True
             break
         
         print(pd_down(frame,str), dur)
-        cap_down.release()
         time.sleep(0.02)
 
     if fd:
         sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
-        sscmd((0, 0, 0, -1, 0, 2.7), stm32)  # Lower the actuator
+        sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
-        sscmd((0, 0, 0, 1, 1, 3), stm32)   # Raise the actuator
+        sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
         sscmd((0, -10), stm32)             # Move backward
         sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
         sscmd((0.05, -0.5, 0, 0, 1, th_time), stm32) # Return to the original position
@@ -450,23 +448,20 @@ def find_and_catch(clr, stm32):
     start = time.time()
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
-        cap_down = cv2.VideoCapture(0)
         ret, frame = cap_down.read()
         if pd_down(frame,str):
             th_time = time.time() - start - th_time
-            cap_down.release()
             fd = True
             break
         
         print(pd_down(frame,str), dur)
-        cap_down.release()
         time.sleep(0.02)
 
     if fd:
         sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
-        sscmd((0, 0, 0, -1, 0, 2.7), stm32)  # Lower the actuator
+        sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
-        sscmd((0, 0, 0, 1, 1, 3), stm32)   # Raise the actuator
+        sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
         sscmd((0, -10), stm32)             # Move backward
         sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
         sscmd((0.05, 0.5, 0, 0, 1, th_time), stm32) # Return to the original position
@@ -496,8 +491,6 @@ def main():
     # Initialize communication
 
     stm32 = STM32Comm(port='/dev/ttyS0', baudrate=115200, enable=True)
-
-
 
     if USE_VISUAL_CONTROL:
 
@@ -552,14 +545,15 @@ def main():
 
         else:
 
+            wh.cap0 = cv2.VideoCapture(0)
+            wh.cap4 = cv2.VideoCapture(4)
+            wh.cap2 = cv2.VideoCapture(2)
+            wh.K, wh.D = load_camera_params()
+            
             while True:
                 sss = input()
                 cmd = tuple(map(float,sss.split()))
                 sscmd(cmd,stm32)
-                # cap_down = cv2.VideoCapture(0)
-                # ret,frame = cap_down.read()
-                # print(pd_down(frame,"orange"))
-                # cap_down.release()
                 if(len(cmd) == 1):
                     vl = cmd[0]
                     if vl == -1:
@@ -579,9 +573,12 @@ def main():
                     elif vl == 10 or vl == 11 or vl == 12:
                         gt_photo(int(vl - 10))
 
-            # === Manual debug mode ===
-
             sscmd((0,0,0,0,0,10)) # stop
+
+            wh.cap0.release()
+            wh.cap4.release()
+            wh.cap2.release()
+
             print("[DEBUG] Starting manual command sequence...")
             return
 
