@@ -88,7 +88,9 @@ BASE_SPEED = 0.25
 
 CAM_DOWN  = 0   # Downward camera
 
-CAM_FRONT = 2   # Forward camera
+CAM_FRONT = 4   # Forward camera
+
+CAM_LEFT = 2
 
 
 
@@ -180,8 +182,6 @@ def giv_high(high1):
 
     wh.dn_high = high1
 
-
-
 def _empty_result():
 
     return {'is_detected': False, 'position_mm': None, 'euler_deg': None,
@@ -235,7 +235,6 @@ def detect_all(frame=None, camera=None, marker_size_mm=None):
     return results
 
 
-
 def _pose_id(tb, frame, K, D):
     if tb == 1:
         return _pose_id1(frame=frame, K=K, D=D)
@@ -250,10 +249,11 @@ def _pose_id(tb, frame, K, D):
     elif tb == 6:
         return _pose_id6(frame=frame, K=K, D=D)
 
-def g_left(ta, tb, stm32):
+
+def g_left(tim, tb, stm32):
     K, D = load_camera_params()
     start = time.time()
-    while time.time() - start < ta:
+    while time.time() - start < tim:
         stm32.send_command(0, 0, 0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
         cap = cv2.VideoCapture(4)
         ret,frame = cap.read()
@@ -266,15 +266,15 @@ def g_left(ta, tb, stm32):
                 break
 
         cap.release()
-        time.sleep(0.05)
+        time.sleep(0.025)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 
-def g_right(ta, tb, stm32):
+def g_right(tim, tb, stm32):
     K, D = load_camera_params()
     start = time.time()
-    while time.time() - start < ta:
+    while time.time() - start < tim:
         stm32.send_command(0, 0, -0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
         cap = cv2.VideoCapture(4)
         ret,frame = cap.read()
@@ -287,7 +287,7 @@ def g_right(ta, tb, stm32):
             if result['euler_deg'][1] <= 1:
                 break
 
-        time.sleep(0.05)
+        time.sleep(0.025)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
@@ -304,13 +304,12 @@ def sscmd(cmd,stm32):
             stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
 
             #cap_down.release()
-            time.sleep(0.05)
+            time.sleep(0.025)
 
 
     elif len(cmd) == 2:
 
         vx,vy = cmd
-
         stm32.send_move_relative(vx, vy)
 
     elif len(cmd) == 3:
@@ -356,7 +355,7 @@ def go_and_get(stm32):# keep the stuff on the top
         
         print(pd_down(frame,"orange"),dur)
         cap_down.release()
-        time.sleep(0.05)
+        time.sleep(0.025)
 
     if fd == False:
         return
@@ -384,16 +383,18 @@ def go_from_begin(stm32):
     start = time.time()
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
-        cap_down = cv2.VideoCapture(2)
-        ret,frame = cap_down.read()
+        cap = cv2.VideoCapture(2)
+        ret,frame = cap.read()
         if pd_down(frame,"orange"):
-            cap_down.release()
+            cap.release()
             fd = True
             break
         
         print(pd_down(frame,"orange"),dur)
-        cap_down.release()
-        time.sleep(0.05)
+        cap.release()
+        time.sleep(0.025)
+
+    g_right(3.65,5,stm32)
 
 def main():
 
@@ -537,7 +538,7 @@ def main():
 
                         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=z_dir, fan=fan)
 
-                        time.sleep(0.05)
+                        time.sleep(0.025)
 
                 elif len(cmd) == 2:
                     vx,vy = cmd
