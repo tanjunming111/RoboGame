@@ -207,8 +207,6 @@ def detect_all(frame=None, camera=None, marker_size_mm=None):
 
         return {mid: _empty_result() for mid in _POSE_FUNCS}
 
-
-
     results = {}
 
     for mid, func in _POSE_FUNCS.items():
@@ -252,7 +250,7 @@ def g_left(tim, tb, stm32, sl = 0):
                 break
 
         cap.release()
-        time.sleep(0.025)
+        time.sleep(0.02)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
@@ -275,7 +273,7 @@ def g_right(tim, tb, stm32, sl = 0):
             if result['euler_deg'][1] <= 1:
                 break
 
-        time.sleep(0.025)
+        time.sleep(0.02)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
@@ -290,7 +288,7 @@ def sscmd(cmd,stm32):
 
             stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
 
-            time.sleep(0.025)
+            time.sleep(0.02)
 
 
     elif len(cmd) == 2:
@@ -355,7 +353,7 @@ def go_and_get(stm32):# keep the stuff on the top
         
         print(pd_down(frame,"orange"),dur)
         cap_down.release()
-        time.sleep(0.025)
+        time.sleep(0.02)
 
     if fd == False:
         return
@@ -394,7 +392,7 @@ def go_from_begin(stm32):
         
         print(pd_down(frame,"orange"),dur)
         cap.release()
-        time.sleep(0.025)
+        time.sleep(0.02)
 
     g_right(3.65,5,stm32)
 
@@ -426,7 +424,7 @@ def find_and_catch(clr, stm32):
         
         print(pd_down(frame,str), dur)
         cap_down.release()
-        time.sleep(0.025)
+        time.sleep(0.02)
 
     if fd:
         sscmd((0, 0, 0, 0, 1, 0.1), stm32)   # Stop
@@ -455,7 +453,7 @@ def find_and_catch(clr, stm32):
         
         print(pd_down(frame,str), dur)
         cap_down.release()
-        time.sleep(0.025)
+        time.sleep(0.02)
 
     if fd:
         sscmd((0, 0, 0, 0, 1, 0.1), stm32)   # Stop
@@ -597,7 +595,7 @@ def main():
 
                         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=z_dir, fan=fan)
 
-                        time.sleep(0.025)
+                        time.sleep(0.02)
 
                 elif len(cmd) == 2:
                     vx,vy = cmd
