@@ -32,8 +32,8 @@ max_gap = 20
 def solve_pd(mask):
     mask_in = mask.copy()
     h, w = mask_in.shape
-    cx, cy = int(w * 0.5), int(h * 0.4)  # 圆心位置（中间偏上）
-    RR = 80 # 半径
+    cx, cy = int(w * 0.4), int(h * 0.2)  # 圆心位置（中间偏上）
+    RR = 40 # 半径
 
     # 1.生成圆形掩码
     circle_mask = np.zeros((h, w),dtype = np.uint8)
@@ -49,7 +49,7 @@ def solve_pd(mask):
     ratio = white_in / total_in
     print(ratio)
     ret = False
-    if ratio >= 0.95:
+    if ratio >= 0.98:
         # dn.ys = True
         ret = True
     else:

@@ -288,7 +288,7 @@ def sscmd(cmd,stm32):
 
             stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
 
-            time.sleep(0.02)
+            time.sleep(0.05)
 
 
     elif len(cmd) == 2:
@@ -304,7 +304,7 @@ def sscmd(cmd,stm32):
 
     # Send relative move commands (separate)
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0.05)
+    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 def gt_photo(wh):
     print(wh)
@@ -368,7 +368,7 @@ def get_up_slope(stm32):
     cmd = (0.8,0,0,0,0,2)
     sscmd(cmd,stm32)
 
-quarter = 3.65
+quarter = 3.75
 
 def turn_left(stm32):
     sscmd((0,0,1,0,0,quarter),stm32)
@@ -377,24 +377,29 @@ def turn_right(stm32): # for 1/4 round
     sscmd((0,0,-1,0,0,quarter),stm32)
 
 def go_from_begin(stm32):
-    cmd = (0.5,0,0,0,0,3.5)
+    K, D = load_camera_params()
+    cmd = (0.5,0,0,0,0,2.5)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     start = time.time()
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
-        cap = cv2.VideoCapture(2)
+        cap = cv2.VideoCapture(4)
         ret,frame = cap.read()
-        if pd_down(frame,"orange"):
-            cap.release()
-            fd = True
-            break
-        
-        print(pd_down(frame,"orange"),dur)
+        cv2.imshow("show",frame)
+        cv2.waitKey(1)
+        result = _pose_id(1, frame, K, D)
         cap.release()
+        if result['is_detected']:
+            print(111)
+            if result['euler_deg'][1] <= 1:
+                break
         time.sleep(0.02)
 
-    g_right(3.65,5,stm32)
+    g_right(quarter,5,stm32)
+
+    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+
 
 
 def find_and_catch(clr, stm32):
@@ -403,11 +408,12 @@ def find_and_catch(clr, stm32):
     str = "orange"
     if clr == 1:
         str = "purple"
+    ztim = 3
     sscmd((0, 0, 0, 1, 0, 3), stm32)
-    sscmd((0.5, 0, 0, 0, 0, 3), stm32)
-    sscmd((0.3, 0, 0, 0, 0, 3), stm32)
-    sscmd((0, 30), stm32)             # Move ahead
-    cmd = (0.05, 0.4, 0, 0, 0, 3)
+    sscmd((0.5, 0, 0, 0, 0, 1), stm32)
+    sscmd((0.35, 0, 0, 0, 0, 1), stm32)
+    # sscmd((0, 30), stm32)             # Move ahead
+    cmd = (0.05, 0.5, 0, 0, 0, ztim)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     th_time = 0
@@ -416,6 +422,8 @@ def find_and_catch(clr, stm32):
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
         cap_down = cv2.VideoCapture(0)
         ret, frame = cap_down.read()
+        cv2.imshow("show",frame)
+        cv2.waitKey(1)
         if pd_down(frame,str):
             th_time = time.time() - start
             cap_down.release()
@@ -427,26 +435,25 @@ def find_and_catch(clr, stm32):
         time.sleep(0.02)
 
     if fd:
-        sscmd((0, 0, 0, 0, 1, 0.1), stm32)   # Stop
-        sscmd((0, 0, 0, -1, 1, 3), stm32)  # Lower the actuator
-        sscmd((0, 0, 0, 0, 1, 3), stm32)   # Activate suction
+        sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
+        sscmd((0, 0, 0, -1, 0, 2.7), stm32)  # Lower the actuator
+        sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, 3), stm32)   # Raise the actuator
-        sscmd((0, -30), stm32)             # Move backward
+        sscmd((0, -10), stm32)             # Move backward
         sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
-        sscmd((0.05, -0.4, 0, 0, 1, th_time), stm32) # Return to the original position
+        sscmd((0.05, -0.5, 0, 0, 1, th_time), stm32) # Return to the original position
         return
 
-    cmd = (0.05, -0.4, 0, 0, 0, 6)
+    cmd = (0.05, -0.5, 0, 0, 0, th_time + ztim)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
-    th_time = 0
     start = time.time()
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
         cap_down = cv2.VideoCapture(0)
         ret, frame = cap_down.read()
         if pd_down(frame,str):
-            th_time = time.time() - start
+            th_time = time.time() - start - th_time
             cap_down.release()
             fd = True
             break
@@ -456,13 +463,13 @@ def find_and_catch(clr, stm32):
         time.sleep(0.02)
 
     if fd:
-        sscmd((0, 0, 0, 0, 1, 0.1), stm32)   # Stop
-        sscmd((0, 0, 0, -1, 1, 3), stm32)  # Lower the actuator
-        sscmd((0, 0, 0, 0, 1, 3), stm32)   # Activate suction
+        sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
+        sscmd((0, 0, 0, -1, 0, 2.7), stm32)  # Lower the actuator
+        sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, 3), stm32)   # Raise the actuator
-        sscmd((0, -30), stm32)             # Move backward
+        sscmd((0, -10), stm32)             # Move backward
         sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
-        sscmd((0.05, -0.4, 0, 0, 1, th_time), stm32) # Return to the original position
+        sscmd((0.05, 0.5, 0, 0, 1, th_time), stm32) # Return to the original position
         return
 
 
