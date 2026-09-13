@@ -2,8 +2,6 @@
 
 tot_detect.py - Master control program for ArUco navigation and block handling.
 
-
-
 Uses two cameras (front and down) and communicates with STM32 via serial.
 
 Step motors are now controlled via relative commands (send_move_relative).
@@ -11,7 +9,6 @@ Step motors are now controlled via relative commands (send_move_relative).
 Actuator is controlled in open-loop via direction in send_command (z_dir).
 
 """
-
 
 import cv2
 
@@ -44,7 +41,6 @@ from step14_aruco_id6_pose_estimation import get_camera_pose as _pose_id6
 from box_detector import pd_down
 
 
-
 # Import communication module
 
 try:
@@ -52,8 +48,6 @@ try:
     from stm32_comm import STM32Comm
 
 except ImportError:
-
-    print("[ERROR] stm32_comm.py not found. Please ensure the communication module is in the same directory.")
 
     class STM32Comm:
 
@@ -84,7 +78,7 @@ CAM_DOWN  = 0   # Downward camera
 
 CAM_FRONT = 4   # Forward camera
 
-CAM_LEFT = 2
+CAM_LEFT = 2 # Left camera
 
 
 
@@ -103,6 +97,10 @@ _POSE_FUNCS = {
 class State:
 
     def __init__(self):
+
+        self.platform = 0
+
+        # above is need
 
         self.step = 0
 
@@ -430,22 +428,53 @@ def find_and_catch(clr, stm32):
         cap_down.release()
         time.sleep(0.025)
 
-    if fd or True:
-        sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
-        sscmd((0, 0, 0, -1, 0, 3), stm32)  # Lower the actuator
+    if fd:
+        sscmd((0, 0, 0, 0, 1, 0.1), stm32)   # Stop
+        sscmd((0, 0, 0, -1, 1, 3), stm32)  # Lower the actuator
         sscmd((0, 0, 0, 0, 1, 3), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, 3), stm32)   # Raise the actuator
         sscmd((0, -30), stm32)             # Move backward
         sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
-        sscmd((0.05, -0.4, 0, 0, 0, th_time), stm32) # Return to the original position
+        sscmd((0.05, -0.4, 0, 0, 1, th_time), stm32) # Return to the original position
+        return
+
+    cmd = (0.05, -0.4, 0, 0, 0, 6)
+    vx, vy, vrot, z_dir, fan, dur = cmd
+    fd = False
+    th_time = 0
+    start = time.time()
+    while time.time() - start < dur:
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+        cap_down = cv2.VideoCapture(0)
+        ret, frame = cap_down.read()
+        if pd_down(frame,str):
+            th_time = time.time() - start
+            cap_down.release()
+            fd = True
+            break
+        
+        print(pd_down(frame,str), dur)
+        cap_down.release()
+        time.sleep(0.025)
+
+    if fd:
+        sscmd((0, 0, 0, 0, 1, 0.1), stm32)   # Stop
+        sscmd((0, 0, 0, -1, 1, 3), stm32)  # Lower the actuator
+        sscmd((0, 0, 0, 0, 1, 3), stm32)   # Activate suction
+        sscmd((0, 0, 0, 1, 1, 3), stm32)   # Raise the actuator
+        sscmd((0, -30), stm32)             # Move backward
+        sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
+        sscmd((0.05, -0.4, 0, 0, 1, th_time), stm32) # Return to the original position
+        return
+
+
+def go_go_go(stm32):
+    go_from_begin(stm32)
+
 
 def main():
 
-    # ============================================================
-
     # Mode selection
-
-    # ============================================================
 
     USE_VISUAL_CONTROL = False   # True: visual mode, False: manual debug
 
