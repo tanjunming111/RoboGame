@@ -233,7 +233,7 @@ def g_left(tim, tb, stm32, sl = 0):
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
-def g_right(tim, tb, stm32, sl = 0):
+def g_right(tim, tb, stm32, sl = 0, cp = 1):
     K, D = load_camera_params()
     start = time.time()
     while time.time() - start < tim:
@@ -242,6 +242,8 @@ def g_right(tim, tb, stm32, sl = 0):
         else:
             stm32.send_command(0, 0, -0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
         cap = wh.cap4
+        if cp == 2:
+            cap = wh.cap2
         ret,frame = cap.read()
         cv2.imshow("show",frame)
         cv2.waitKey(1)
@@ -410,11 +412,17 @@ def turn_left(stm32):
 def turn_right(stm32): # for 1/4 round
     sscmd((0,0,-1,0,0,quarter),stm32)
 
+
+def set_begin(stm32):
+    sscmd((0,30),stm32)
+    sscmd((0,-15),stm32) # put it in -15
+
+
 def go_from_begin(stm32):
     sscmd((0,-0.7,0,0,0,2), stm32) # give some space
     K = wh.K
     D = wh.D
-    cmd = (0.5,0,0,0,0,2.5)
+    cmd = (0.5,0,0,0,0,4)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     start = time.time()
@@ -427,12 +435,12 @@ def go_from_begin(stm32):
         result = _pose_id(1, frame, K, D)
         if result['is_detected']:
             print(111)
-            if result['position_mm'][0] <= 0:
+            if result['position_mm'][0] <= -1200:
                 break
         time.sleep(0.02)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
-    g_right(quarter,5,stm32)
+    g_right(quarter * 2 , 2 ,stm32, cp = 2) # watch ArUco2
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
@@ -560,6 +568,7 @@ def put_down(stm32):
     sscmd((0, 0, 0, 1, 0, 3), stm32)   # Raise the actuator and turn off suction
 
 def go_go_go(stm32):
+    # set_begin(stm32)
     go_from_begin(stm32)
     left_to_right(stm32, 3)
     g_left(quarter, 4, stm32, sl = 1)
@@ -620,7 +629,7 @@ def main():
                 if(len(cmd) == 1):
                     vl = cmd[0]
                     if vl == -1:
-                        break
+                        set_begin(stm32)
                     elif vl == 1:
                         turn_left(stm32)
                     elif vl == 2:
