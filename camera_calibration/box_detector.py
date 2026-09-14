@@ -32,7 +32,7 @@ max_gap = 20
 def solve_pd(mask):
     mask_in = mask.copy()
     h, w = mask_in.shape
-    cx, cy = int(w * 0.4), int(h * 0.07)  # 圆心位置（中间偏上）
+    cx, cy = int(w * 0.4), int(h * 0.06)  # 圆心位置（中间偏上）
     RR = 30 # 半径
 
     # 1.生成圆形掩码

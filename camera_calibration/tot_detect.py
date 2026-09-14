@@ -475,9 +475,10 @@ def find_and_catch(clr, stm32):
     # Move forward until the block is detected, then catch it
     ### have to guarantee that the catcher went ahead
     crs = "orange"
+    ztim = 4
     if clr == 1:
         crs = "purple"
-    ztim = 4
+        ztim = 3
     ups = 3
     dwns = 2.7
     sscmd((0, 0, 0, 1, 0, ups), stm32)
@@ -543,6 +544,12 @@ def find_and_catch(clr, stm32):
         sscmd((0.02, 0.5, 0, 0, 1, th_time), stm32) # Return to the original position
         sscmd((-0.5,0,0,0,0,1),stm32) # go back
         return
+
+
+def catch_purple(stm32):
+    g_left(quarter, 3, stm32)
+    adjust_face(2, 3, stm32)
+    find_and_catch(1, stm32)
 
 
 def put_down(stm32):
@@ -634,6 +641,9 @@ def main():
                         adjust_face(2, 4,stm32)
                     elif vl == 10:
                         adjust_clock(2, 4,stm32)
+
+                    elif vl == 21:
+                        catch_purple(stm32)
                     elif vl == 50 or vl == 51 or vl == 52:
                         gt_photo(int(vl - 50))
 
