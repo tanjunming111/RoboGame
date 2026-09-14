@@ -483,6 +483,9 @@ def find_and_catch(clr, stm32):
 def go_go_go(stm32):
     go_from_begin(stm32)
     left_to_right(stm32)
+    g_left(quarter, 4, stm32, sl = 1)
+    return
+    get_up_slope(stm32)
 
 
 def main():
@@ -514,7 +517,6 @@ def main():
     else:
 
         print("[SYSTEM] Starting mode: Manual debug")
-
 
 
     try:
