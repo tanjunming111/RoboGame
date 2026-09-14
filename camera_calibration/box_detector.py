@@ -32,7 +32,6 @@ max_gap = 20
 def solve_pd(mask):
     mask_in = mask.copy()
     h, w = mask_in.shape
-    print("h,w:", h, w)
     cx, cy = int(w * 0.4), int(h * 0.07)  # 圆心位置（中间偏上）
     RR = 30 # 半径
 
@@ -61,7 +60,7 @@ def solve_pd(mask):
     cv2.imshow("circle", mask_in)
     return ret
 
-def pd_down(frame, str):
+def pd_down(frame, crs):
     # ===== 第1步：高斯模糊（降噪）=====
     blurred = cv2.GaussianBlur(frame, (blur_size, blur_size), 1)
 
@@ -72,9 +71,8 @@ def pd_down(frame, str):
     hsv=cv2.cvtColor(blurred,cv2.COLOR_BGR2HSV)
 
     # 生成掩码，白色为观察范围
-    if str == "orange":
-        mask=cv2.inRange(hsv,LOWER_ORANGE,UPPER_ORANGE)
-    elif str == "purple":
+    mask=cv2.inRange(hsv,LOWER_ORANGE,UPPER_ORANGE)
+    if crs == "purple":
         mask=cv2.inRange(hsv,LOWER_PURPLE,UPPER_PURPLE)
 
     # 创建形态学核（圆形核）

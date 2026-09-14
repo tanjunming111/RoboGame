@@ -306,12 +306,12 @@ def sscmd(cmd,stm32):
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
-def gt_photo(wh):
-    print(wh)
+def gt_photo(id):
+    print(id)
     cap = wh.cap0
-    if wh == 1:
+    if id == 1:
         cap = wh.cap4
-    elif wh == 2:
+    elif id == 2:
         cap = wh.cap2
     ret,frame = cap.read()
     cv2.imshow("show",frame)
@@ -415,9 +415,9 @@ def left_to_right(stm32):
 def find_and_catch(clr, stm32):
     # Move forward until the block is detected, then catch it
     ### have to guarantee that the catcher went ahead
-    str = "orange"
+    crs = "orange"
     if clr == 1:
-        str = "purple"
+        crs = "purple"
     ztim = 3
     ups = 3
     dwns = 2.7
@@ -434,39 +434,44 @@ def find_and_catch(clr, stm32):
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
         ret, frame = cap_down.read()
-        cv2.imshow("show",frame)
+        cv2.imshow("show_r",frame)
         cv2.waitKey(1)
-        if pd_down(frame,str):
+        if pd_down(frame,crs):
             th_time = time.time() - start
             fd = True
             break
         
-        print(pd_down(frame,str), dur)
+        print(dur, ret)
         time.sleep(0.02)
 
     if fd:
+        print("left")
         sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
         sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
-        sscmd((0, -10), stm32)             # Move backward
-        sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
+        # sscmd((0, -10), stm32)             # Move backward
+        # sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
         sscmd((0.05, -0.5, 0, 0, 1, th_time), stm32) # Return to the original position
+        sscmd((-0.5,0,0,0,0,1),stm32)
         return
 
     cmd = (0.05, -0.5, 0, 0, 0, th_time + ztim)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     start = time.time()
+    cap_down = wh.cap0
     while time.time() - start < dur:
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
         ret, frame = cap_down.read()
-        if pd_down(frame,str):
+        cv2.imshow("show_r",frame)
+        cv2.waitKey(1)
+        if pd_down(frame,crs):
             th_time = time.time() - start - th_time
             fd = True
             break
         
-        print(pd_down(frame,str), dur)
+        print(dur,ret)
         time.sleep(0.02)
 
     if fd:
@@ -474,9 +479,10 @@ def find_and_catch(clr, stm32):
         sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
-        sscmd((0, -10), stm32)             # Move backward
-        sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
+        # sscmd((0, -10), stm32)             # Move backward
+        # sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
         sscmd((0.05, 0.5, 0, 0, 1, th_time), stm32) # Return to the original position
+        sscmd((-0.5,0,0,0,0,1),stm32)
         return
 
 
@@ -601,6 +607,8 @@ def main():
 
 
     except KeyboardInterrupt:
+
+        stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
         print("\n[SYSTEM] User interrupt")
 
