@@ -154,8 +154,6 @@ class State:
 
 wh = State()
 
-mx_high = 100  # Max arm height (not used in open-loop)
-
 
 def getspeed():
 
@@ -174,9 +172,7 @@ def getspeed():
 
 def _empty_result():
     return {'is_detected': False, 'position_mm': None, 'euler_deg': None,
-
             'distance_mm': None, 'reproj_error_px': None,
-
             'rvec': None, 'tvec': None, 'corners': None, 'detected_on': None}
 
 
@@ -400,6 +396,22 @@ def go_from_begin(stm32):
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 
+def left_to_right(stm32):
+    cmd = (0.5,0,0,0,0,3)
+    vx, vy, vrot, z_dir, fan, dur = cmd
+    stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+    while True:
+        ret,frame = wh.cap4.read()
+        cv2.imshow("show",frame)
+        cv2.waitKey(1)
+        result = _pose_id(6, frame, wh.K, wh.D)
+        if result['is_detected']:
+            if result['position_mm'][1] * (-1) <= 1000:
+                break
+        time.sleep(0.02)
+
+    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+
 def find_and_catch(clr, stm32):
     # Move forward until the block is detected, then catch it
     ### have to guarantee that the catcher went ahead
@@ -470,6 +482,7 @@ def find_and_catch(clr, stm32):
 
 def go_go_go(stm32):
     go_from_begin(stm32)
+    left_to_right(stm32)
 
 
 def main():
@@ -477,12 +490,6 @@ def main():
     # Mode selection
 
     USE_VISUAL_CONTROL = False   # True: visual mode, False: manual debug
-
-
-
-    cap_front = None
-
-    cap_down = None
 
     stm32 = None
 
@@ -503,34 +510,6 @@ def main():
             print("[ERROR] Failed to load camera parameters")
 
             return
-
-
-
-        cap_front = cv2.VideoCapture(CAM_FRONT)
-
-        cap_down = cv2.VideoCapture(CAM_DOWN)
-
-        if not cap_front.isOpened():
-
-            print(f"[ERROR] Cannot open front camera (index {CAM_FRONT})")
-
-            return
-
-        if not cap_down.isOpened():
-
-            print(f"[ERROR] Cannot open down camera (index {CAM_DOWN})")
-
-            return
-
-
-
-        cap_front.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-
-        cap_front.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-        cap_down.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-
-        cap_down.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
     else:
 
@@ -570,6 +549,8 @@ def main():
                         go_from_begin(stm32)
                     elif vl == 6:
                         find_and_catch(0, stm32)
+                    elif vl == 7:
+                        left_to_right(stm32)
                     elif vl == 10 or vl == 11 or vl == 12:
                         gt_photo(int(vl - 10))
 
@@ -592,13 +573,9 @@ def main():
                     vx, vy, vrot, z_dir, fan, dur = cmd
 
                     print(f"[DEBUG] Sending command: vx={vx}, vy={vy}, vrot={vrot}, z_dir={z_dir}, fan={fan}, dur={dur}")
-
                     start = time.time()
-
                     while time.time() - start < dur:
-
                         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=z_dir, fan=fan)
-
                         time.sleep(0.02)
 
                 elif len(cmd) == 2:
@@ -609,7 +586,6 @@ def main():
                     pdt,_,_ = cmd
                     if pdt == -1:
                         break
-
 
             # Send relative move commands (separate)
 
@@ -628,13 +604,13 @@ def main():
 
     finally:
 
-        if cap_front is not None and cap_front.isOpened():
+        # if cap_front is not None and cap_front.isOpened():
 
-            cap_front.release()
+        #     cap_front.release()
 
-        if cap_down is not None and cap_down.isOpened():
+        # if cap_down is not None and cap_down.isOpened():
 
-            cap_down.release()
+        #     cap_down.release()
 
         if stm32 is not None:
 

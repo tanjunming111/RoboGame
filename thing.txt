@@ -2,3 +2,4 @@ Sleep_time: 0.025
 ahead:
 left and right:
 turn un-clock wise:
+aruco catch unit: XXX mm
