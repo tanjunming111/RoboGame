@@ -9,7 +9,7 @@ class is_down:
 dn = is_down()
 
 # 填入第二步调好的阈值
-LOWER_ORANGE = np.array([9, 30, 115])
+LOWER_ORANGE = np.array([9, 10, 110])
 UPPER_ORANGE = np.array([35, 170, 255])
 LOWER_PURPLE = np.array([101, 16, 57])
 UPPER_PURPLE = np.array([140, 154, 255])
@@ -32,7 +32,7 @@ max_gap = 20
 def solve_pd(mask):
     mask_in = mask.copy()
     h, w = mask_in.shape
-    cx, cy = int(w * 0.4), int(h * 0.06)  # 圆心位置（中间偏上）
+    cx, cy = int(w * 0.43), int(h * 0.06)  # 圆心位置（中间偏上）
     RR = 30 # 半径
 
     # 1.生成圆形掩码
@@ -56,8 +56,11 @@ def solve_pd(mask):
         # dn.ys = False
         ret = False
 
+    mask_clr = cv2.cvtColor(mask_in, cv2.COLOR_GRAY2BGR)
+    cv2.circle(mask_clr, (cx, cy), RR, (0, 0, 255), 2)
+
     cv2.circle(mask_in, (cx, cy), RR, (255, 255, 255), 2)
-    cv2.imshow("circle", mask_in)
+    cv2.imshow("circle", mask_clr)
     return ret
 
 def pd_down(frame, crs):
