@@ -135,16 +135,6 @@ wh = State()
 
 def getspeed():
 
-    """
-
-    Return current control values.
-
-    vy: forward speed, vx: lateral, w: angular, dn_v: actuator direction,
-
-    nd_catch: suction on, nd_throw: suction off (release).
-
-    """
-
     return wh.vy, wh.vx, wh.w, wh.dn_v, wh.nd_catch, wh.nd_throw
 
 
@@ -254,7 +244,7 @@ def g_right(tim, tb, stm32, sl = 0, cp = 1):
         if result['is_detected']:
             print(result['euler_deg'][1])
             ttt -= 1
-            if ttt <= 0 and result['euler_deg'][1] >= -1:
+            if ttt <= 0 and result['euler_deg'][1] >= -1:  # Standard
                 if ttt <= 0:
                     break
 
@@ -278,10 +268,9 @@ def sscmd(cmd,stm32):
 
             time.sleep(0.02)
 
-
     elif len(cmd) == 2:
         vx,vy = cmd
-        stm32.send_move_relative(vx, vy)
+        stm32.send_move_relative(vx, vy) # right is +
 
     elif len(cmd) == 3:
         typ,ta,tb = cmd
@@ -291,7 +280,6 @@ def sscmd(cmd,stm32):
             g_right(ta, tb, stm32)
 
     # Send relative move commands (separate)
-
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
 
 def gt_photo(id):
@@ -306,7 +294,8 @@ def gt_photo(id):
     cv2.waitKey(1)
 
 def adjust_clock(tim, tb, stm32):
-    K, D = load_camera_params()
+    K = wh.K
+    D = wh.D
     cap = wh.cap4
     ret,frame = cap.read()
     cv2.imshow("show",frame)
@@ -315,9 +304,9 @@ def adjust_clock(tim, tb, stm32):
     if result['is_detected'] == False:
         print("not detect")
         return
-    if result['euler_deg'][1] < 0:
+    if result['euler_deg'][1] > 2:
         g_left(tim, tb, stm32,sl = 1)
-    elif result['euler_deg'][1] > 0:
+    elif result['euler_deg'][1] < -2:
         g_right(tim, tb, stm32,sl = 1)
 
     stm32.send_command(0, 0, 0, 0, 0, 0, 0)
@@ -331,9 +320,9 @@ def adjust_face(tim, tb, stm32):
         print("not detect")
         return
     result = _pose_id(tb, frame, K, D)
-    if result['position_mm'][0] < 0:
+    if result['position_mm'][0] < -1:
         to_go = 0.5
-    elif result['position_mm'][0] > 0:
+    elif result['position_mm'][0] > 1:
         to_go = -0.5
     stm32.send_command(0, to_go, 0, 0, 0, 0, 0)
     start = time.time()
@@ -406,11 +395,11 @@ def go_and_get(stm32):# keep the stuff on the top
     sscmd((0,0,0,-1,1,2),stm32)
 
 def get_up_slope(stm32):
-    cmd = (0.8,0,0,0,0,2)
+    cmd = (0.8,0,0,0,0,2.5)
     sscmd(cmd,stm32)
 
 def get_down_slope(stm32):
-    cmd = (0.4,0,0,0,0,2)
+    cmd = (0.3,0,0,0,0,2.5)
     sscmd(cmd,stm32)
 
 quarter = 3.75
@@ -631,12 +620,19 @@ def main():
         if USE_VISUAL_CONTROL:
             old_dn = True
         else:
-            wh.cap0 = cv2.VideoCapture(0)
-            wh.cap4 = cv2.VideoCapture(4)
+            wh.cap0 = cv2.VideoCapture(0, cv2.CAP_V4L2)
+            wh.cap0.set(cv2.CAP_PROP_FRAME_WIDTH,640)
+            wh.cap0.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+
+            wh.cap4 = cv2.VideoCapture(4, cv2.CAP_V4L2)
+            wh.cap4.set(cv2.CAP_PROP_FRAME_WIDTH,640)
+            wh.cap4.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+
             wh.cap2 = cv2.VideoCapture(2, cv2.CAP_V4L2)
             wh.cap2.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
             wh.cap2.set(cv2.CAP_PROP_FRAME_WIDTH,640)
             wh.cap2.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+
             wh.K, wh.D = load_camera_params()
 
             print("All Right")
@@ -669,6 +665,11 @@ def main():
                         adjust_face(2, 4,stm32)
                     elif vl == 10:
                         adjust_clock(2, 4,stm32)
+                    elif vl == 11:
+                        w1 = input("time:")
+                        w2 = input("tb:")
+                        w3 = input("distance:")
+                        go_until(w1, w2, w3, stm32)
 
                     elif vl == 21:
                         catch_purple(stm32)
