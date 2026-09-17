@@ -6,7 +6,7 @@ Uses two cameras (front and down) and communicates with STM32 via serial.
 
 Step motors are now controlled via relative commands (send_move_relative).
 
-Actuator is controlled in open-loop via direction in send_command (z_dir).
+Actuator is controlled in open-loop via direction in send _ command (z_dir).
 
 """
 
@@ -105,6 +105,7 @@ class State:
         self.cap2 = None  # left
         self.K = None
         self.D = None
+        self.hold = 0 # robot is holding the box
 
         # above is need
 
@@ -144,48 +145,6 @@ def _empty_result():
             'rvec': None, 'tvec': None, 'corners': None, 'detected_on': None}
 
 
-
-def detect_all(frame=None, camera=None, marker_size_mm=None):
-
-    """Detect all ArUco markers in the given frame."""
-
-    if frame is None:
-
-        temp_camera = None
-
-        if camera is None:
-
-            temp_camera = cv2.VideoCapture(CAM_FRONT)
-
-        camera = temp_camera
-
-        ret, frame = camera.read()
-
-        if temp_camera is not None:
-
-            temp_camera.release()
-
-        if not ret:
-
-            print("[WARNING] Failed to capture frame")
-
-            return {mid: _empty_result() for mid in _POSE_FUNCS}
-
-    K, D = load_camera_params()
-
-    if K is None:
-
-        return {mid: _empty_result() for mid in _POSE_FUNCS}
-
-    results = {}
-
-    for mid, func in _POSE_FUNCS.items():
-
-        results[mid] = func(frame=frame, K=K, D=D, marker_size_mm=marker_size_mm)
-
-    return results
-
-
 def _pose_id(tb, frame, K, D):
     if tb == 1:
         return _pose_id1(frame=frame, K=K, D=D)
@@ -200,40 +159,50 @@ def _pose_id(tb, frame, K, D):
     elif tb == 6:
         return _pose_id6(frame=frame, K=K, D=D)
 
+def stop_it(stm32):
+    stm32.send_command(0, 0, 0, 0, 0, wh.hold, 0)
+    time.sleep(0.02)
+    stm32.send_command(0, 0, 0, 0, 0, wh.hold, 0)
 
-def g_left(tim, tb, stm32, sl = 0):
+
+def g_left(tim, tb, stm32, sl = 0, cp = 1):
     K, D = load_camera_params()
     start = time.time()
     ttt = 10
+    if sl == 1:
+        vr = 0.5
+    else:
+        vr = 0.8
     while time.time() - start < tim:
-        if sl == 1:
-            stm32.send_command(0, 0, 0.5, x_mm=0, y_mm=0, z_dir=0, fan=0)
-        else:
-            stm32.send_command(0, 0, 0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
+        stm32.send_command(0, 0, vr, x_mm=0, y_mm=0, z_dir=wh.hold, fan=0)
         cap = wh.cap4
+        if cp == 2:
+            cap = wh.cap2
         ret,frame = cap.read()
         cv2.imshow("show",frame)
         cv2.waitKey(1)
         result = _pose_id(tb, frame, K, D)
+        print("det:",result['is_detected'])
         if result['is_detected']:
+            print(ttt,result['euler_deg'][1])
             ttt -= 1
-            if ttt <= 0 and result['euler_deg'][1] <= 1: # Standard
-                    break
-
+            if ttt <= 0 and result['euler_deg'][1] <= 5: # Standard
+                break
 
         time.sleep(0.02)
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 def g_right(tim, tb, stm32, sl = 0, cp = 1):
     K, D = load_camera_params()
     start = time.time()
     ttt = 10
+    if sl == 1:
+        vr = -0.5
+    else:
+        vr = -0.8
     while time.time() - start < tim:
-        if sl == 1:
-            stm32.send_command(0, 0, -0.5, x_mm=0, y_mm=0, z_dir=0, fan=0)
-        else:
-            stm32.send_command(0, 0, -0.8, x_mm=0, y_mm=0, z_dir=0, fan=0)
+        stm32.send_command(0, 0, vr, x_mm=0, y_mm=0, z_dir=wh.hold, fan=0)
         cap = wh.cap4
         if cp == 2:
             cap = wh.cap2
@@ -244,16 +213,14 @@ def g_right(tim, tb, stm32, sl = 0, cp = 1):
         if result['is_detected']:
             print(result['euler_deg'][1])
             ttt -= 1
-            if ttt <= 0 and result['euler_deg'][1] >= -1:  # Standard
-                if ttt <= 0:
-                    break
+            if ttt <= 0 and result['euler_deg'][1] >= -5:  # Standard
+                print(result['euler_deg'][1])
+                print(result['euler_deg'][1]>=-5)
+                break
 
         time.sleep(0.02)
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
-
-def stop_it(stm32):
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 
 def sscmd(cmd,stm32):
@@ -264,13 +231,14 @@ def sscmd(cmd,stm32):
         start = time.time()
         while time.time() - start < dur:
 
-            stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+            stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=wh.hold, fan=int(fan))
 
             time.sleep(0.02)
 
     elif len(cmd) == 2:
         vx,vy = cmd
         stm32.send_move_relative(vx, vy) # right is +
+        time.sleep(0.5)
 
     elif len(cmd) == 3:
         typ,ta,tb = cmd
@@ -280,7 +248,7 @@ def sscmd(cmd,stm32):
             g_right(ta, tb, stm32)
 
     # Send relative move commands (separate)
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 def gt_photo(id):
     print(id)
@@ -309,7 +277,7 @@ def adjust_clock(tim, tb, stm32):
     elif result['euler_deg'][1] < -2:
         g_right(tim, tb, stm32,sl = 1)
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 def adjust_face(tim, tb, stm32):
     K = wh.K
@@ -320,11 +288,14 @@ def adjust_face(tim, tb, stm32):
         print("not detect")
         return
     result = _pose_id(tb, frame, K, D)
+    if result['is_detected'] == False:
+        print("CAN'T FIND")
+        return
     if result['position_mm'][0] < -1:
         to_go = 0.5
     elif result['position_mm'][0] > 1:
         to_go = -0.5
-    stm32.send_command(0, to_go, 0, 0, 0, 0, 0)
+    stm32.send_command(0, to_go, 0, 0, 0, wh.hold, 0)
     start = time.time()
     while time.time() - start < tim:
         ret,frame = cap.read()
@@ -334,10 +305,12 @@ def adjust_face(tim, tb, stm32):
         if ret == False:
             print("not detect")
             break
-        if result['position_mm'][0] * to_go <= 0:
+        print(result['position_mm'][0], to_go)
+        if result['position_mm'][0] * to_go >= 0:
+            print("Done")
             break
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 
 def go_until(tim, tb, dis, stm32):
@@ -349,20 +322,22 @@ def go_until(tim, tb, dis, stm32):
         print("not detect")
         return
     result = _pose_id(tb, frame, K, D)
-    stm32.send_command(0.5, 0, 0, 0, 0, 0, 0)
+    stm32.send_command(0.5, 0, 0, 0, 0, wh.hold, 0)
     start = time.time()
     while time.time() - start < tim:
         ret,frame = cap.read()
-        cv2.imshow("show",frame)
-        cv2.waitKey(1)
-        result = _pose_id(tb, frame, K, D)
         if ret == False:
             print("not detect")
             break
-        if result['position_mm'][2] * (-1) <= dis:
-            break
+        cv2.imshow("show",frame)
+        cv2.waitKey(1)
+        result = _pose_id(tb, frame, K, D)
+        if result['is_detected']:
+            print(result['position_mm'][2])
+            if result['position_mm'][2] * (-1) <= dis:
+                break
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 
 def go_and_get(stm32):# keep the stuff on the top
@@ -375,7 +350,7 @@ def go_and_get(stm32):# keep the stuff on the top
     start = time.time()
     cap_down = wh.cap0
     while time.time() - start < dur:
-        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=wh.hold, fan=int(fan))
         ret,frame = cap_down.read()
         if pd_down(frame,"orange"):
            stop_it(stm32)
@@ -395,11 +370,11 @@ def go_and_get(stm32):# keep the stuff on the top
     sscmd((0,0,0,-1,1,2),stm32)
 
 def get_up_slope(stm32):
-    cmd = (0.8,0,0,0,0,2.5)
+    cmd = (0.8,0,0,0,0,3)
     sscmd(cmd,stm32)
 
 def get_down_slope(stm32):
-    cmd = (0.3,0,0,0,0,2.5)
+    cmd = (0.3,0,0,0,0,3)
     sscmd(cmd,stm32)
 
 quarter = 3.75
@@ -416,57 +391,43 @@ def set_begin(stm32):
     time.sleep(1.0)
     sscmd((0,30),stm32)
     time.sleep(1.0)
-    sscmd((0,-15),stm32) # put it in -15
+    sscmd((0,-22),stm32) # put it in -15
 
 
 def go_from_begin(stm32):
     sscmd((0,-0.7,0,0,0,2), stm32) # give some space
     K = wh.K
     D = wh.D
-    cmd = (0.5,0,0,0,0,3)
+    cmd = (0.5,0,0,0,0,2.2)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     start = time.time()
     cap = wh.cap2
     while time.time() - start < dur:
-        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=wh.hold, fan=int(fan))
         ret,frame = cap.read()
         cv2.imshow("show",frame)
         cv2.waitKey(1)
         result = _pose_id(1, frame, K, D)
         if result['is_detected']:
-            print(111)
-            if result['position_mm'][0] <= -1200:
+            print("SEE")
+            if result['position_mm'][0] <= 0:
                 break
         time.sleep(0.02)
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
-    g_right(quarter , 2 ,stm32, cp = 2) # watch ArUco2
+    stop_it(stm32)
+    g_right(quarter + 1 , 2 ,stm32, cp = 2) # watch ArUco2
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 
-def left_to_right(stm32, tim):
-    cmd = (0.5,0,0,0,0,tim)
-    vx, vy, vrot, z_dir, fan, dur = cmd
-    stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
-    start = time.time()
-    while time.time() - start < dur:
-        ret,frame = wh.cap4.read()
-        cv2.imshow("show",frame)
-        cv2.waitKey(1)
-        result = _pose_id(5, frame, wh.K, wh.D)
-        if result['is_detected']:
-            if result['position_mm'][2] * (-1) <= 1000:
-                break
-        time.sleep(0.02)
-
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+def left_to_right(stm32, tim, dist):
+    go_until(tim, 5, dist, stm32)
 
 def right_to_left(stm32, tim):
     cmd = (0.5,0,0,0,0,tim)
     vx, vy, vrot, z_dir, fan, dur = cmd
-    stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+    stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=wh.hold, fan=int(fan))
     start = time.time()
     while time.time() - start < dur:
         ret,frame = wh.cap4.read()
@@ -478,7 +439,7 @@ def right_to_left(stm32, tim):
                 break
         time.sleep(0.02)
 
-    stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+    stop_it(stm32)
 
 def find_and_catch(clr, stm32):
     # Move forward until the block is detected, then catch it
@@ -489,23 +450,24 @@ def find_and_catch(clr, stm32):
         crs = "purple"
         ztim = 3
     ups = 3
-    dwns = 2.5
+    dwns = 2.7
     sscmd((0, 0, 0, 1, 0, ups), stm32)
     sscmd((0.5, 0, 0, 0, 0, 1.5), stm32)
     sscmd((0.35, 0, 0, 0, 0, 1), stm32)
     time.sleep(0.5)
     # sscmd((0, 30), stm32)             # Move ahead
-    cmd = (0.05, 0.5, 0.05, 0, 0, ztim)
+    cmd = (0.05, 0.5, 0.0, 0, 0, ztim)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     th_time = 0
     cap_down = wh.cap0
     start = time.time()
     while time.time() - start < dur:
-        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=wh.hold, fan=int(fan))
         ret, frame = cap_down.read()
         cv2.imshow("show_r",frame)
         cv2.waitKey(1)
+        print("FINDING")
         if pd_down(frame,crs):
             stop_it(stm32)
             th_time = time.time() - start
@@ -520,26 +482,30 @@ def find_and_catch(clr, stm32):
         print("left")
         sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
         sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
+        wh.hold = 1
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
         # sscmd((0, -10), stm32)             # Move backward
         # sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
-        sscmd((0.02, -0.5, 0, 0, 1, th_time), stm32) # Return to the original position
-        sscmd((-0.5,0,0,0,0,1),stm32) # go back
+        sscmd((0.05, -0.5, 0, 0, 1, th_time), stm32) # Return to the original position
+        sscmd((-0.5,0,0,0,0,2),stm32) # go back
+        sscmd((0,-20), stm32)
         return
 
-    cmd = (0.05, -0.5, -0.05, 0, 0, th_time + ztim)
+    cmd = (0.02, -0.5, -0.0, 0, 0, ztim * 2)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     start = time.time()
     while time.time() - start < dur:
-        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=int(fan))
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=wh.hold, fan=int(fan))
         ret, frame = cap_down.read()
         cv2.imshow("show_r",frame)
         cv2.waitKey(1)
+        print(ret,"CATCHING")
         if pd_down(frame,crs):
+            print("YES")
             stop_it(stm32)
-            th_time = time.time() - start - th_time
+            th_time = time.time() - start - ztim
             fd = True
             break
         
@@ -550,13 +516,19 @@ def find_and_catch(clr, stm32):
         time.sleep(0.08)
         sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
         sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
+        wh.hold = 1
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
         # sscmd((0, -10), stm32)             # Move backward
         # sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
         sscmd((0.02, 0.5, 0, 0, 1, th_time), stm32) # Return to the original position
         sscmd((-0.5,0,0,0,0,1),stm32) # go back
+        sscmd((0,-20), stm32)
         return
+
+    stop_it(stm32)
+    sscmd((0.02, 0.5, 0, 0, 1, ztim), stm32)
+    sscmd((-0.5,0,0,0,0,1),stm32)
 
 
 def catch_purple(stm32):
@@ -566,28 +538,37 @@ def catch_purple(stm32):
 
 
 def put_down(stm32):
-    adjust_face(2, 6, stm32)
-    go_until(2, 6, 500, stm32)
-    sscmd((0, 0, 0, -1, 1, 2.7), stm32)   # Lower the actuator and keep suction on
+    sscmd((0, 0, 0, -1, 1, 2.5), stm32)   # Lower the actuator and keep suction on
+    sscmd((0, 20), stm32)
+    wh.hold = 0
     sscmd((0, 0, 0, 0, 0, 3), stm32)   # Wait for a moment
     sscmd((0, 0, 0, 1, 0, 3), stm32)   # Raise the actuator and turn off suction
 
 def go_go_go(stm32):
-    # set_begin(stm32)
+    set_begin(stm32)
+    sscmd((0, -20),stm32)
     go_from_begin(stm32)
-    left_to_right(stm32, 3)
-    g_left(quarter, 4, stm32, sl = 1)
-    return
+    left_to_right(stm32, 6, 1200)
+    g_left(quarter , 4 ,stm32)
     get_up_slope(stm32)
-    sscmd((0.5, 0, 0, 0, 0, 2), stm32)
-    find_and_catch(0, stm32)
+    sscmd((0.5,0,0,0,0,0.5),stm32)
+
+    adjust_clock(0.5, 4, stm32)
     adjust_face(1, 4, stm32)
-    adjust_clock(1, 6, stm32)
+
+    go_until(2, 4, 800, stm32)
+    find_and_catch(0, stm32)
+
+    adjust_face(1, 4, stm32)
+    adjust_clock(1, 4, stm32)
+
     g_left(quarter * 2, 6, stm32) # turn back
-    sscmd((0.5, 0, 0, 0, 0, 2), stm32)
+    sscmd((0.5, 0, 0, 0, 1, 1.5), stm32)
     get_down_slope(stm32)
+    go_until(2, 6, 600, stm32)
+    sscmd((0.3, 0, 0, 0, 1, 2), stm32)
     put_down(stm32)
-    right_to_left(stm32, 3)
+    # right_to_left(stm32, 3)
 
 
 def main():
@@ -603,16 +584,6 @@ def main():
     # Initialize communication
 
     stm32 = STM32Comm(port='/dev/ttyS0', baudrate=115200, enable=True)
-
-    if USE_VISUAL_CONTROL:
-
-        print("[SYSTEM] Starting mode: Visual automatic recognition")
-        K, D = load_camera_params()
-        if K is None:
-            print("[ERROR] Failed to load camera parameters")
-            return
-    else:
-        print("[SYSTEM] Starting mode: Manual debug")
 
 
     try:
@@ -666,10 +637,14 @@ def main():
                     elif vl == 10:
                         adjust_clock(2, 4,stm32)
                     elif vl == 11:
-                        w1 = input("time:")
-                        w2 = input("tb:")
-                        w3 = input("distance:")
+                        w1 = float(input("time:"))
+                        w2 = float(input("tb:"))
+                        w3 = float(input("distance:"))
                         go_until(w1, w2, w3, stm32)
+                    elif vl == 12:
+                        w1 = float(input("time:"))
+                        w2 = float(input("tb:"))
+                        g_left(w1,w2,stm32)
 
                     elif vl == 21:
                         catch_purple(stm32)
@@ -700,6 +675,12 @@ def main():
 
         print("\n[SYSTEM] User interrupt")
 
+        wh.cap0.release()
+        wh.cap4.release()
+        wh.cap2.release()
+
+        print("[DEBUG] End")
+
     finally:
 
         # if cap_front is not None and cap_front.isOpened():
@@ -715,6 +696,5 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()
 
