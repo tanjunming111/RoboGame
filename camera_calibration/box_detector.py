@@ -9,7 +9,7 @@ class is_down:
 dn = is_down()
 
 # 填入第二步调好的阈值
-LOWER_ORANGE = np.array([9, 10, 110])
+LOWER_ORANGE = np.array([9, 0, 110])
 UPPER_ORANGE = np.array([35, 170, 255])
 LOWER_PURPLE = np.array([101, 16, 57])
 UPPER_PURPLE = np.array([140, 154, 255])
@@ -29,11 +29,15 @@ hough_thresh = 30
 min_len = 30
 max_gap = 20
 
-def solve_pd(mask):
+def solve_pd(mask, al):
     mask_in = mask.copy()
     h, w = mask_in.shape
-    cx, cy = int(w * 0.43), int(h * 0.06)  # 圆心位置（中间偏上）
-    RR = 30 # 半径
+    cx, cy = int(w * 0.43), int(h * 0.2)  # 圆心位置（中间偏上）
+    RR = 35 # 半径
+
+    if al == 1:
+        cx, cy = int(w * 0.5), int(h * 0.5)
+        RR = 200
 
     # 1.生成圆形掩码
     circle_mask = np.zeros((h, w),dtype = np.uint8)
@@ -63,7 +67,7 @@ def solve_pd(mask):
     cv2.imshow("circle", mask_clr)
     return ret
 
-def pd_down(frame, crs):
+def pd_down(frame, crs, al = 0):
     # ===== 第1步：高斯模糊（降噪）=====
     blurred = cv2.GaussianBlur(frame, (blur_size, blur_size), 1)
 
@@ -112,7 +116,7 @@ def pd_down(frame, crs):
     #         x1,y1,x2,y2 = line[0]
     #         cv2.line(line_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
-    return solve_pd(mask)
+    return solve_pd(mask, al)
 
 def main():
     cap = cv2.VideoCapture(0)
