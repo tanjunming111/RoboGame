@@ -32,8 +32,8 @@ max_gap = 20
 def solve_pd(mask, al):
     mask_in = mask.copy()
     h, w = mask_in.shape
-    cx, cy = int(w * 0.43), int(h * 0.2)  # 圆心位置（中间偏上）
-    RR = 35 # 半径
+    cx, cy = int(w * 0.43), int(h * 0.11)  # 圆心位置（中间偏上）
+    RR = 50 # 半径
 
     if al == 1:
         cx, cy = int(w * 0.5), int(h * 0.5)

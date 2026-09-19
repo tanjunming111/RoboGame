@@ -194,7 +194,7 @@ def g_left(tim, tb, stm32, sl = 0, cp = 1):
                     break
         stm32.send_command(0, 0, vr, x_mm=0, y_mm=0, z_dir=0, fan=wh.hold)
         time.sleep(0.3)
-        ts += 0.28
+        ts += 0.25
 
     stop_it(stm32)
 
@@ -208,6 +208,7 @@ def g_right(tim, tb, stm32, sl = 0, cp = 1):
     if cp == 2:
         cap = wh.cap2
     ts = 0
+    start = time.time()
     while ts < tim:
         stm32.send_command(0, 0, 0, x_mm=0, y_mm=0, z_dir=0, fan=wh.hold)
         time.sleep(0.2)
@@ -220,11 +221,13 @@ def g_right(tim, tb, stm32, sl = 0, cp = 1):
                 print(result['euler_deg'][1])
                 if result['euler_deg'][1] >= -5:  # Standard
                     print("G_RIGHT_YES",result['euler_deg'][1])
+                    # print(ts)
+                    # print(time.time() - start)
                     break
 
         stm32.send_command(0, 0, vr, x_mm=0, y_mm=0, z_dir=0, fan=wh.hold)
         time.sleep(0.3)
-        ts += 0.28
+        ts += 0.25
 
     stop_it(stm32)
 
@@ -434,13 +437,14 @@ def get_down_slope(stm32, td = 1):
     cmd = (0.4 * td,0,0,0,0,3)
     sscmd(cmd,stm32)
 
-quarter = 3.75
+normal_quarter = 2
+gs_quarter = 3
 
 def turn_left(stm32):
-    sscmd((0,0,1,0,0,quarter),stm32)
+    sscmd((0,0,1,0,0,normal_quarter),stm32)
 
 def turn_right(stm32): # for 1/4 round
-    sscmd((0,0,-1,0,0,quarter),stm32)
+    sscmd((0,0,-1,0,0,normal_quarter),stm32)
 
 
 def set_begin(stm32):
@@ -453,10 +457,11 @@ def set_begin(stm32):
 
 
 def go_from_begin(stm32):
-    sscmd((0,-0.7,0,0,0,2), stm32) # give some space
+    sscmd((0,-0.7,0,0,0,2.0), stm32) # give some space
+    print("GIVING SPACE")
     K = wh.K
     D = wh.D
-    cmd = (0.5,0,0,0,0,2)
+    cmd = (0.5,0,0,0,0,2.5)
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     start = time.time()
@@ -507,7 +512,7 @@ def find_and_catch(clr, stm32):
     ### have to guarantee that the catcher went ahead
     crs = "orange"
     ztim = 5
-    dt = 0.2
+    dt = 0.5
     if clr == 1:
         crs = "purple"
         ztim = 3
@@ -639,7 +644,7 @@ def find_and_catch(clr, stm32):
 
 
 def catch_purple(stm32):
-    g_left(quarter, 3, stm32)
+    g_left(gs_quarter, 3, stm32)
     adjust_face(2, 3, stm32)
     find_and_catch(1, stm32)
 
@@ -657,51 +662,69 @@ def go_go_go(stm32):
     sscmd((0,0,0,-1,0,2),stm32)
     sscmd((0, -20),stm32)
     go_from_begin(stm32)
-    g_right(quarter + 0.3 , 2 ,stm32, cp = 2) # watch ArUco2
-    left_to_right(stm32, 6, 800)
-    g_left(quarter , 4 ,stm32) # watch ArUco4
-    
-    get_up_slope(stm32)
+    g_right(gs_quarter + 0.5 , 2 ,stm32, cp = 2) # watch ArUco2
 
-    # # adjust_clock(0.5, 4, stm32)
-    # # adjust_face(1, 4, stm32)
-    # # go_until(2, 4, 700, stm32)
-    # # set_begin(stm32)
-    # # sscmd((0,8),stm32) # for the last
-    # # find_and_catch(0, stm32)
-    # # sscmd((0, -20),stm32)
+    sscmd((-0.5,0,0,0,0,2),stm32)
+    sscmd((-0.4,0,0,0,0,1),stm32)
+    sscmd((-0.8,0,0,0,0,1),stm32)
+    sscmd((0.5,0,0,0,0,3),stm32)
 
-    turn_until(1, 4 ,stm32)
+    # return
+    ttt = 0
     while True:
-        go_until(2, 4, 900, stm32)
-        set_begin(stm32)
-        sscmd((0,8),stm32) # for the last
-        find_and_catch(0, stm32)
-        sscmd((0, -20),stm32)
-        # cap_down = wh.cap0
-        # ret, frame = cap_down.read()
-        # cv2.imshow("show_r",frame)
-        break
-        # if pd_down(frame, "orange", al = 1):
-        #     print("GET THE BOX")
-        #     break
+        left_to_right(stm32, 6, 1000)
+        g_left(gs_quarter , 4 ,stm32) # watch ArUco4
 
-    # adjust_face(1, 4, stm32)
-    # adjust_clock(1, 4, stm32)
-    # sscmd((0.5, 0,0,0,0,1), stm32)
+        sscmd((-0.5,0,0,0,0,2),stm32)
+        sscmd((-0.4,0,0,0,0,1),stm32)
+        sscmd((-0.8,0,0,0,0,1),stm32)
+        sscmd((0.5,0,0,0,0,2),stm32)
+        
+        get_up_slope(stm32)
 
-    sscmd((-0.5,0,0,0,0,1.5), stm32)
-    get_down_slope(stm32, td = -1)
-    sscmd((-0.5,0,0,0,0,1),stm32)
-    sscmd((-0.4,0,0,0,0,2),stm32)
-    sscmd((0.5,0,0,0,0,1), stm32)
-    g_left(quarter * 2 + 0.1, 6, stm32) # turn back
-    go_until(2, 6, 600, stm32)
-    sscmd((0.5,0,0,0,1,1),stm32)
-    sscmd((0.3, 0, 0, 0, 1, 2), stm32)
-    sscmd((0.8,0,0,0,0,1),stm32) # for test and wait to del
-    put_down(stm32)
-    # right_to_left(stm32, 3)
+        # # adjust_clock(0.5, 4, stm32)
+        # # adjust_face(1, 4, stm32)
+        # # go_until(2, 4, 700, stm32)
+        # # set_begin(stm32)
+        # # sscmd((0,8),stm32) # for the last
+        # # find_and_catch(0, stm32)
+        # # sscmd((0, -20),stm32)
+
+        turn_until(1, 4 ,stm32)
+        while True:
+            go_until(2, 4, 900, stm32)
+            set_begin(stm32)
+            sscmd((0,8),stm32) # for the last
+            find_and_catch(0, stm32)
+            sscmd((0, -20),stm32)
+            # cap_down = wh.cap0
+            # ret, frame = cap_down.read()
+            # cv2.imshow("show_r",frame)
+            break
+            # if pd_down(frame, "orange", al = 1):
+            #     print("GET THE BOX")
+            #     break
+
+        # adjust_face(1, 4, stm32)
+        # adjust_clock(1, 4, stm32)
+        # sscmd((0.5, 0,0,0,0,1), stm32)
+
+        sscmd((-0.5,0,0,0,0,1.5), stm32)
+        get_down_slope(stm32, td = -1)
+        sscmd((-0.5,0,0,0,0,1),stm32)
+        sscmd((-0.4,0,0,0,0,2),stm32)
+        sscmd((0.5,0,0,0,0,1), stm32)
+        g_left(gs_quarter * 2 + 0.1, 6, stm32) # turn back
+        go_until(2, 6, 600, stm32)
+        sscmd((0.5,0,0,0,1,1),stm32)
+        sscmd((0.3, 0, 0, 0, 1, 2), stm32)
+        sscmd((0.8,0,0,0,0,1),stm32) # for test and wait to del
+        put_down(stm32)
+
+        sscmd((-0.5,0,0,0,0,1.5), stm32)
+        g_left(gs_quarter + 0.3, 5, stm32)
+
+        ttt += 1
 
 
 def main():
@@ -789,9 +812,11 @@ def main():
                         gt_photo(int(vl - 50))
 
                     elif vl == 61:
-                        g_right(4*quarter,5,stm32,cp = 1)
+                        g_right(4*gs_quarter,5,stm32,cp = 1)
                     elif vl == 62:
-                        g_right(4*quarter,5,stm32,cp = 2)
+                        g_right(gs_quarter*2,2,stm32,cp = 2)
+                    elif vl == 63:
+                        g_left(gs_quarter * 2 + 0.1, 6, stm32)
 
                     elif vl == 100:
                         go_go_go(stm32)
