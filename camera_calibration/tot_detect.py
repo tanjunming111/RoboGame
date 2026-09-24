@@ -232,7 +232,7 @@ def g_right(tim, tb, stm32, sl = 0, cp = 1):
     stop_it(stm32)
 
 
-def sscmd(cmd,stm32):
+def sscmd(cmd,stm32, nstop = 0):
 
     if len(cmd) == 6:
         vx, vy, vrot, z_dir, fan, dur = cmd
@@ -247,17 +247,12 @@ def sscmd(cmd,stm32):
     elif len(cmd) == 2:
         vx,vy = cmd
         stm32.send_move_relative(vx, vy) # right is +
-        time.sleep(0.5)
-
-    elif len(cmd) == 3:
-        typ,ta,tb = cmd
-        if typ == 1:
-            g_left(ta, tb, stm32)
-        elif typ == 2:
-            g_right(ta, tb, stm32)
+        slp = (vx + vy) / 40 # waiting to do the moving
+        time.sleep(slp) # waiting to do the moving
 
     # Send relative move commands (separate)
-    stop_it(stm32)
+    if nstop == 0:
+        stop_it(stm32)
 
 def gt_photo(id):
     print(id)
@@ -431,6 +426,8 @@ def go_and_get(stm32):# keep the stuff on the top
 
 def get_up_slope(stm32):
     cmd = (1,0,0,0,0,2.5)
+    sscmd(cmd,stm32,nstop = 1)
+    cmd = (0.5,0,0,0,0,0.5) # get the speed low
     sscmd(cmd,stm32)
 
 def get_down_slope(stm32, td = 1):
@@ -731,8 +728,6 @@ def main():
 
     # Mode selection
 
-    USE_VISUAL_CONTROL = False   # True: visual mode, False: manual debug
-
     stm32 = None
 
     lst_time = time.time()
@@ -744,85 +739,82 @@ def main():
 
     try:
 
-        if USE_VISUAL_CONTROL:
-            old_dn = True
-        else:
-            wh.cap0 = cv2.VideoCapture(0, cv2.CAP_V4L2)
-            wh.cap0.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-            wh.cap0.set(cv2.CAP_PROP_FRAME_WIDTH,640)
-            wh.cap0.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+        wh.cap0 = cv2.VideoCapture(0, cv2.CAP_V4L2)
+        wh.cap0.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        wh.cap0.set(cv2.CAP_PROP_FRAME_WIDTH,640)
+        wh.cap0.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
 
-            wh.cap4 = cv2.VideoCapture(4, cv2.CAP_V4L2)
-            wh.cap4.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-            wh.cap4.set(cv2.CAP_PROP_FRAME_WIDTH,640)
-            wh.cap4.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+        wh.cap4 = cv2.VideoCapture(4, cv2.CAP_V4L2)
+        wh.cap4.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        wh.cap4.set(cv2.CAP_PROP_FRAME_WIDTH,640)
+        wh.cap4.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
 
-            wh.cap2 = cv2.VideoCapture(2, cv2.CAP_V4L2)
-            wh.cap2.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-            wh.cap2.set(cv2.CAP_PROP_FRAME_WIDTH,640)
-            wh.cap2.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+        wh.cap2 = cv2.VideoCapture(2, cv2.CAP_V4L2)
+        wh.cap2.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        wh.cap2.set(cv2.CAP_PROP_FRAME_WIDTH,640)
+        wh.cap2.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
 
-            wh.K, wh.D = load_camera_params()
+        wh.K, wh.D = load_camera_params()
 
-            print("All Right")
-            
-            while True:
-                sss = input()
-                cmd = tuple(map(float,sss.split()))
-                sscmd(cmd,stm32)
-                if(len(cmd) == 1):
-                    vl = cmd[0]
-                    if vl == -1:
-                        set_begin(stm32)
-                    elif vl == 1:
-                        turn_left(stm32)
-                    elif vl == 2:
-                        turn_right(stm32)
-                    elif vl == 3:
-                        go_and_get(stm32)
-                    elif vl == 4:
-                        get_up_slope(stm32)
-                    elif vl == 5:
-                        go_from_begin(stm32)
-                    elif vl == 6:
-                        find_and_catch(0, stm32)
-                    elif vl == 7:
-                        left_to_right(stm32, 8,650)
-                    elif vl == 8:
-                        right_to_left(stm32, 3)
-                    elif vl == 9:
-                        adjust_face(2, 4,stm32)
-                    elif vl == 10:
-                        adjust_clock(2, 4,stm32)
-                    elif vl == 11:
-                        w1 = float(input("time:"))
-                        w2 = float(input("tb:"))
-                        w3 = float(input("distance:"))
-                        go_until(w1, w2, w3, stm32)
-                    elif vl == 12:
-                        w1 = float(input("time:"))
-                        w2 = float(input("tb:"))
-                        g_left(w1,w2,stm32)
-                    elif vl == 13:
-                        turn_until(2,4,stm32)
+        print("All Right")
+        
+        while True:
+            sss = input()
+            cmd = tuple(map(float,sss.split()))
+            sscmd(cmd,stm32)
+            if(len(cmd) == 1):
+                vl = cmd[0]
+                if vl == -1:
+                    set_begin(stm32)
+                elif vl == 1:
+                    turn_left(stm32)
+                elif vl == 2:
+                    turn_right(stm32)
+                elif vl == 3:
+                    go_and_get(stm32)
+                elif vl == 4:
+                    get_up_slope(stm32)
+                elif vl == 5:
+                    go_from_begin(stm32)
+                elif vl == 6:
+                    find_and_catch(0, stm32)
+                elif vl == 7:
+                    left_to_right(stm32, 8,650)
+                elif vl == 8:
+                    right_to_left(stm32, 3)
+                elif vl == 9:
+                    adjust_face(2, 4,stm32)
+                elif vl == 10:
+                    adjust_clock(2, 4,stm32)
+                elif vl == 11:
+                    w1 = float(input("time:"))
+                    w2 = float(input("tb:"))
+                    w3 = float(input("distance:"))
+                    go_until(w1, w2, w3, stm32)
+                elif vl == 12:
+                    w1 = float(input("time:"))
+                    w2 = float(input("tb:"))
+                    g_left(w1,w2,stm32)
+                elif vl == 13:
+                    turn_until(2,4,stm32)
 
-                    elif vl == 21:
-                        catch_purple(stm32)
-                    elif vl == 50 or vl == 51 or vl == 52:
-                        gt_photo(int(vl - 50))
+                elif vl == 21:
+                    catch_purple(stm32)
+                elif vl == 50 or vl == 51 or vl == 52:
+                    gt_photo(int(vl - 50))
 
-                    elif vl == 61:
-                        g_right(4*gs_quarter,5,stm32,cp = 1)
-                    elif vl == 62:
-                        g_right(gs_quarter*2,2,stm32,cp = 2)
-                    elif vl == 63:
-                        g_left(gs_quarter * 2 + 0.1, 6, stm32)
+                elif vl == 61:
+                    g_right(4*gs_quarter,5,stm32,cp = 1)
+                elif vl == 62:
+                    g_right(gs_quarter*2,2,stm32,cp = 2)
+                elif vl == 63:
+                    g_left(gs_quarter * 2 + 0.1, 6, stm32)
 
-                    elif vl == 100:
-                        go_go_go(stm32)
+                elif vl == 100:
+                    go_go_go(stm32)
 
-            print("[DEBUG] End")
-            return
+        print("[DEBUG] End")
+        return
 
 
     except KeyboardInterrupt:
@@ -841,12 +833,6 @@ def main():
         print("[DEBUG] End")
 
     finally:
-
-        # if cap_front is not None and cap_front.isOpened():
-        #     cap_front.release()
-        # if cap_down is not None and cap_down.isOpened():
-        #     cap_down.release()
-
         wh.cap0.release()
         wh.cap4.release()
         wh.cap2.release()

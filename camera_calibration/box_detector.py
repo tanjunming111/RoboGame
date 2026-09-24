@@ -9,10 +9,10 @@ class is_down:
 dn = is_down()
 
 # 填入第二步调好的阈值
-LOWER_ORANGE = np.array([9, 0, 110])
-UPPER_ORANGE = np.array([35, 170, 255])
-LOWER_PURPLE = np.array([101, 16, 57])
-UPPER_PURPLE = np.array([140, 154, 255])
+LOWER_ORANGE = np.array([0, 0, 176])
+UPPER_ORANGE = np.array([36, 169, 255])
+LOWER_PURPLE = np.array([0, 0, 152])
+UPPER_PURPLE = np.array([179, 62, 255])
 
 # 形态学操作的核大小，用于去噪和填补空洞
 MORPH_KERNEL_SIZE = 5
