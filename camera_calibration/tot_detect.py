@@ -358,6 +358,31 @@ def go_until(tim, tb, dis, stm32):
 
     stop_it(stm32)
 
+def go_left_until(tim, tb, dir, stm32): # dir = 1 : left   dir = -1 : right
+    K = wh.K
+    D = wh.D
+    cap = wh.cap4
+    ret,frame = cap.read()
+    if ret == False:
+        print("not detect")
+        return
+    stm32.send_command(0, 0.7 * dir, 0, 0, 0,0, wh.hold)
+    start = time.time()
+    while time.time() - start < tim:
+        ret,frame = cap.read()
+        if ret == False:
+            print("not detect")
+            break
+        cv2.imshow("show",frame)
+        cv2.waitKey(1)
+        result = _pose_id(tb, frame, K, D)
+        if result['is_detected']:
+            print(result['position_mm'][0])
+            if result['position_mm'][0] * dir >= -5: # go until face
+                break
+
+    stop_it(stm32)
+
 def turn_until(tim, tb, stm32):
     K = wh.K
     D = wh.D
@@ -451,7 +476,7 @@ def turn_left(stm32):
 def turn_right(stm32): # for 1/4 round
     sscmd((0,0,-1,0,0,normal_quarter),stm32)
 
-def set_begin(stm32):
+def set_begin(stm32, typ = -1):
     sscmd((0,30),stm32) # to prepare
     sscmd((0,30),stm32)
     time.sleep(1.0)
@@ -459,6 +484,10 @@ def set_begin(stm32):
     time.sleep(1.0)
     sscmd((0,-20),stm32) # put it in -20
     wh.pw = -20
+    if typ == 0:
+        sscmd((0,8),stm32) # for orange
+    elif typ == 1:
+        sscmd((0,12),stm32) # for purple
 
 
 def go_from_begin(stm32):
@@ -536,12 +565,48 @@ def adjust_catch(cap_down, crs, dir, stm32, typ = 1):
         if ddd == 0:
             break
 
-def catching(stm32):
-    a = 1
+def pt_in(stm32):
+    sscmd((0,30),stm32) # to prepare
+    sscmd((0,30),stm32)
+    sscmd((0,40),stm32)
+    time.sleep(0.5)
+    sscmd((-10,0),stm32)
+    sscmd((-10,0),stm32)
+    sscmd((-10,0),stm32)
+    sscmd((-5,0),stm32)
+    sscmd((-5,0),stm32)
+    sscmd((0,0,0,-1,0,1.5),stm32)
+    wh.hold = 0
+    sscmd((0, 0, 0, 0, 0, 5), stm32)   # Activate suction
+    sscmd((0,0,0,1,0,2),stm32)
+    sscmd((40,0),stm32)
+    set_begin(stm32)
 
-def go_find(cmd, crs, cap_down, stm32):
+def catching(dir, crs, cap_down, ups, dwns, dt, stm32):
+    time.sleep(0.08)
+    ret, frame = cap_down.read()
+    if ret == True:
+        if pd_down(frame,crs) == False:
+            sscmd((0,-dir * 0.6,0,0,0,dt), stm32) # adjust
+    sscmd((0.8, 0, 0, 0, 0, 0.5), stm32)   # go little
+    sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
+    sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
+    wh.hold = 1
+    sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
+    sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
+    
+    wh.hv += 1
+    if wh.hv == 1:
+        pt_in(stm32)
+
+    sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
+
+def go_find(cmd, crs, cap_down, ups, dwns, dt, stm32):
     discard_frames(cap_down)
     vx, vy, vrot, z_dir, fan, dur = cmd
+    dir = 1
+    if vx < 0:
+        dir = -1
     start = time.time()
     while time.time() - start < dur:
         ret, frame = cap_down.read()
@@ -551,7 +616,7 @@ def go_find(cmd, crs, cap_down, stm32):
             print("FINDING")
             if pd_down(frame,crs):
                 stop_it(stm32)
-                catching(stm32)
+                catching(dir, crs, cap_down, ups, dwns, dt, stm32)
         
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=wh.hold)
         time.sleep(0.02)
@@ -590,19 +655,19 @@ def find_and_get(clr, stm32, typ = 0):
     cmd = (0.05, -0.5, 0.0, 0, 0, ztim)
     go_find(cmd, crs, cap_down, stm32)
     if wh.hv == 2:
-        return
+        return # if I get enough box,I will go back
     go_find(cmd, crs, cap_down, stm32)
     cmd = (0.05, 0.5, 0.0, 0, 0, ztim)
     go_find(cmd, crs, cap_down, stm32)
 
+    sscmd((0.8,0,0,0,0,0.5),stm32) # for more
+    sscmd((-0.5,0,0,0,0,3),stm32) # go back
+    sscmd((0,-20), stm32)
+
 
 def find_and_catch(clr, stm32, typ = 0):
     # Move forward until the block is detected, then catch it
-    set_begin(stm32)
-    if clr == 0:
-        sscmd((0,8),stm32) # for the last
-    elif clr == 1:
-        sscmd((0,12), stm32)
+    set_begin(stm32, typ = clr)
     ### have to guarantee that the catcher went ahead
     crs = "orange"
     ztim = 5
