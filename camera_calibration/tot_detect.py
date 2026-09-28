@@ -38,7 +38,7 @@ from step14_aruco_id6_pose_estimation import get_camera_pose as _pose_id6
 
 # Import block detection module
 
-from box_detector import pd_down
+from box_detector import pd_down, pd_lr
 
 
 # Import communication module
@@ -98,14 +98,16 @@ class State:
 
     def __init__(self):
 
-        self.platform = 0  # platform position
+        self.pw = 0  # platform position
 
         self.cap0 = None  # down
         self.cap4 = None  # front
         self.cap2 = None  # left
+        self.cap1 = None # right
         self.K = None
         self.D = None
         self.hold = 0 # robot is holding the box
+        self.hv = 0 # the number of the box being caught
 
         # above is need
 
@@ -133,10 +135,6 @@ class State:
 
 
 wh = State()
-
-def getspeed():
-
-    return wh.vy, wh.vx, wh.w, wh.dn_v, wh.nd_catch, wh.nd_throw
 
 
 def _empty_result():
@@ -167,6 +165,16 @@ def stop_it(stm32):
     stm32.send_command(0, 0, 0, 0, 0,0, wh.hold)
 
 
+def discard_frames(cap, frame_count = 10):
+    for _ in range(frame_count):
+        ret, _ = cap.read()
+        if not ret:
+            print("fail to discard frames")
+            return False
+        cv2.waitKey(1)
+    return True
+
+
 def g_left(tim, tb, stm32, sl = 0, cp = 1):
     K, D = load_camera_params()
     start = time.time()
@@ -186,8 +194,7 @@ def g_left(tim, tb, stm32, sl = 0, cp = 1):
             cv2.imshow("show",frame)
             cv2.waitKey(1)
             result = _pose_id(tb, frame, K, D)
-            print("det:",result['is_detected'])
-            if result['is_detected']:
+            if result['is_detected'] == True:
                 print(result['euler_deg'][1])
                 print("euler_deg", result['euler_deg'][1])
                 if result['euler_deg'][1] <= 5: # Standard
@@ -246,8 +253,9 @@ def sscmd(cmd,stm32, nstop = 0):
 
     elif len(cmd) == 2:
         vx,vy = cmd
+        vx = -vx
         stm32.send_move_relative(vx, vy) # right is +
-        slp = (vx + vy) / 40 # waiting to do the moving
+        slp = (abs(vx) + abs(vy)) / 40 # waiting to do the moving
         time.sleep(slp) # waiting to do the moving
 
     # Send relative move commands (separate)
@@ -443,7 +451,6 @@ def turn_left(stm32):
 def turn_right(stm32): # for 1/4 round
     sscmd((0,0,-1,0,0,normal_quarter),stm32)
 
-
 def set_begin(stm32):
     sscmd((0,30),stm32) # to prepare
     sscmd((0,30),stm32)
@@ -451,6 +458,7 @@ def set_begin(stm32):
     sscmd((0,40),stm32)
     time.sleep(1.0)
     sscmd((0,-20),stm32) # put it in -20
+    wh.pw = -20
 
 
 def go_from_begin(stm32):
@@ -504,8 +512,57 @@ def right_to_left(stm32, tim):
 
     stop_it(stm32)
 
-def find_and_catch(clr, stm32):
+def adjust_catch(cap_down, crs, dir, stm32, typ = 1):
+    dt = 0.5
+    ret, frame = cap_down.read()
+    if ret == True:
+        if pd_down(frame,crs) == False:
+            if typ == 1:
+                sscmd((0,dir * 0.5,0,0,0,dt), stm32) # adjust
+    else:
+        return
+    ddd = 10
+    while True:
+        ret, frame = cap_down.read()
+        if ret == False:
+            break
+        l_d, r_d = pd_lr(frame, crs)
+        if abs(l_d - r_d) > 10:
+            if l_d > r_d:
+                sscmd((5,0),stm32)
+            elif r_d > l_d:
+                sscmd((-5,0),stm32)
+        ddd -= 1
+        if ddd == 0:
+            break
+
+def catching(stm32):
+    a = 1
+
+def go_find(cmd, crs, cap_down, stm32):
+    discard_frames(cap_down)
+    vx, vy, vrot, z_dir, fan, dur = cmd
+    start = time.time()
+    while time.time() - start < dur:
+        ret, frame = cap_down.read()
+        if ret == True:
+            cv2.imshow("show_r",frame)
+            cv2.waitKey(1)
+            print("FINDING")
+            if pd_down(frame,crs):
+                stop_it(stm32)
+                catching(stm32)
+        
+        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=wh.hold)
+        time.sleep(0.02)
+
+def find_and_get(clr, stm32, typ = 0):
     # Move forward until the block is detected, then catch it
+    set_begin(stm32)
+    if clr == 0:
+        sscmd((0,8),stm32) # for the last
+    elif clr == 1:
+        sscmd((0,12), stm32)
     ### have to guarantee that the catcher went ahead
     crs = "orange"
     ztim = 5
@@ -523,6 +580,47 @@ def find_and_catch(clr, stm32):
     stop_it(stm32)
 
     cap_down = wh.cap0
+    discard_frames(cap_down) # lose some frames
+    for _ in range(5):
+        cap_down.read()
+        time.sleep(0.1)
+
+    cmd = (0.05, 0.5, 0.0, 0, 0, ztim)
+    go_find(cmd, crs, cap_down, stm32)
+    cmd = (0.05, -0.5, 0.0, 0, 0, ztim)
+    go_find(cmd, crs, cap_down, stm32)
+    if wh.hv == 2:
+        return
+    go_find(cmd, crs, cap_down, stm32)
+    cmd = (0.05, 0.5, 0.0, 0, 0, ztim)
+    go_find(cmd, crs, cap_down, stm32)
+
+
+def find_and_catch(clr, stm32, typ = 0):
+    # Move forward until the block is detected, then catch it
+    set_begin(stm32)
+    if clr == 0:
+        sscmd((0,8),stm32) # for the last
+    elif clr == 1:
+        sscmd((0,12), stm32)
+    ### have to guarantee that the catcher went ahead
+    crs = "orange"
+    ztim = 5
+    dt = 0.5
+    if clr == 1:
+        crs = "purple"
+        ztim = 3
+    ups = 2.8
+    dwns = 2.5
+    sscmd((0, 0, 0, 1, 0, ups), stm32)
+    sscmd((0.5, 0, 0, 0, 0, 1.5), stm32)
+    sscmd((0.35, 0, 0, 0, 0, 1), stm32)
+    sscmd((0.8,0,0,0,0,2),stm32) # for test and wait to del
+    sscmd((-0.5,0,0,0,0,0.2),stm32)
+    stop_it(stm32)
+
+    cap_down = wh.cap0
+    discard_frames(cap_down) # lose some frames
     for _ in range(5):
         cap_down.read()
         time.sleep(0.1)
@@ -549,7 +647,6 @@ def find_and_catch(clr, stm32):
     vx, vy, vrot, z_dir, fan, dur = cmd
     fd = False
     th_time = 0
-
     start = time.time()
     while time.time() - start < dur:
         ret, frame = cap_down.read()
@@ -569,10 +666,11 @@ def find_and_catch(clr, stm32):
 
     if fd:
         time.sleep(0.08)
-        ret, frame = cap_down.read()
-        if ret == True:
-            if pd_down(frame,crs) == False:
-                sscmd((0, -0.5,0,0,0,dt), stm32) # adjust
+        adjust_catch(cap_down, crs, -1, stm32)# adjust dir,left is +
+        # ret, frame = cap_down.read()
+        # if ret == True:
+        #     if pd_down(frame,crs) == False:
+        #         sscmd((0, -0.5,0,0,0,dt), stm32) # adjust
         sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
         sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
         wh.hold = 1
@@ -606,7 +704,6 @@ def find_and_catch(clr, stm32):
                 fd = True
                 break
         
-        print(dur,ret)
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=wh.hold)
         time.sleep(0.02)
 
@@ -643,7 +740,7 @@ def find_and_catch(clr, stm32):
 def catch_purple(stm32):
     g_left(gs_quarter, 3, stm32)
     adjust_face(2, 3, stm32)
-    find_and_catch(1, stm32)
+    find_and_catch(1, stm32,typ = 1)
 
 
 def put_down(stm32):
@@ -664,7 +761,7 @@ def go_go_go(stm32):
     sscmd((-0.5,0,0,0,0,2),stm32)
     sscmd((-0.4,0,0,0,0,1),stm32)
     sscmd((-0.8,0,0,0,0,1),stm32)
-    sscmd((0.5,0,0,0,0,3),stm32)
+    sscmd((0.5,0,0,0,0,3),stm32) # adjust dir
 
     # return
     ttt = 0
@@ -687,11 +784,9 @@ def go_go_go(stm32):
         # # find_and_catch(0, stm32)
         # # sscmd((0, -20),stm32)
 
-        turn_until(1, 4 ,stm32)
+        turn_until(2, 4 ,stm32)
         while True:
             go_until(2, 4, 900, stm32)
-            set_begin(stm32)
-            sscmd((0,8),stm32) # for the last
             find_and_catch(0, stm32)
             sscmd((0, -20),stm32)
             # cap_down = wh.cap0
@@ -754,6 +849,11 @@ def main():
         wh.cap2.set(cv2.CAP_PROP_FRAME_WIDTH,640)
         wh.cap2.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
 
+        # wh.cap1 = cv2.VideoCapture(2, cv2.CAP_V4L2)
+        # wh.cap1.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        # wh.cap1.set(cv2.CAP_PROP_FRAME_WIDTH,640)
+        # wh.cap1.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+
         wh.K, wh.D = load_camera_params()
 
         print("All Right")
@@ -777,7 +877,8 @@ def main():
                 elif vl == 5:
                     go_from_begin(stm32)
                 elif vl == 6:
-                    find_and_catch(0, stm32)
+                    typ = int(input("time:"))
+                    find_and_catch(typ, stm32)
                 elif vl == 7:
                     left_to_right(stm32, 8,650)
                 elif vl == 8:
@@ -826,6 +927,7 @@ def main():
         wh.cap0.release()
         wh.cap4.release()
         wh.cap2.release()
+        # wh.cap1.release()
 
         if stm32 is not None:
             stm32.close()
@@ -836,6 +938,7 @@ def main():
         wh.cap0.release()
         wh.cap4.release()
         wh.cap2.release()
+        # wh.cap1.release()
 
         if stm32 is not None:
             stm32.close()

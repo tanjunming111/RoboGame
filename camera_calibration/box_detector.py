@@ -29,25 +29,58 @@ hough_thresh = 30
 min_len = 30
 max_gap = 20
 
-def solve_pd(mask, al):
+def solve_lr(mask):
+    mask_in = mask.copy()
+    h, w = mask_in.shape
+    cx, cy = int(w * 0.43), int(h * 0.11)  # 中心位置（中间偏上）
+
+    vertical_half_height = 30
+    white_threshold = 0.90
+    y_start = max(0, cy - vertical_half_height)
+    y_end = min(h, cy + vertical_half_height + 1)
+
+    def find_distance(direction):
+        """Find the longest white rectangle from the center toward one side."""
+        distance = 0
+        for offset in range(1, max(cx, w - cx)):
+            if direction == -1:
+                x_start, x_end = cx - offset, cx
+            else:
+                x_start, x_end = cx + 1, cx + offset + 1
+
+            if x_start < 0 or x_end > w:
+                break
+
+            roi = mask_in[y_start:y_end, x_start:x_end]
+            white_ratio = cv2.countNonZero(roi) / roi.size
+            if white_ratio < white_threshold:
+                break
+            distance = offset
+
+        return distance
+
+    # 矩形高度为 cy 上下各 30 像素，白色占比必须超过 90%。
+    left_distance = find_distance(-1)
+    right_distance = find_distance(1)
+
+    return left_distance, right_distance
+
+def solve_pd(mask, al, RR = 50):## RR is 半径
     mask_in = mask.copy()
     h, w = mask_in.shape
     cx, cy = int(w * 0.43), int(h * 0.11)  # 圆心位置（中间偏上）
-    RR = 50 # 半径
 
     if al == 1:
         cx, cy = int(w * 0.5), int(h * 0.5)
         RR = 200
 
-    # 1.生成圆形掩码
-    circle_mask = np.zeros((h, w),dtype = np.uint8)
+    
+    circle_mask = np.zeros((h, w),dtype = np.uint8)# 1.生成圆形掩码
     cv2.circle(circle_mask, (cx,cy), RR, 255, -1)
 
-    # 2.只保留圆形区域
-    roi = cv2.bitwise_and(mask_in, circle_mask)
+    roi = cv2.bitwise_and(mask_in, circle_mask)# 2.只保留圆形区域
 
-    # 3.统计占比
-    white_in = cv2.countNonZero(roi)
+    white_in = cv2.countNonZero(roi)# 3.统计占比
     total_in = cv2.countNonZero(circle_mask)
 
     ratio = white_in / total_in
@@ -67,7 +100,7 @@ def solve_pd(mask, al):
     cv2.imshow("circle", mask_clr)
     return ret
 
-def pd_down(frame, crs, al = 0):
+def solve_the_frame(frame, crs):
     # ===== 第1步：高斯模糊（降噪）=====
     blurred = cv2.GaussianBlur(frame, (blur_size, blur_size), 1)
 
@@ -110,11 +143,17 @@ def pd_down(frame, crs, al = 0):
                             threshold=hough_thresh,  # 投票阈值，越大越严格
                             minLineLength=min_len,    # 最短线段长度
                             maxLineGap=max_gap)       # 允许的最大间隙
-    # line_img = frame.copy()
-    # if lines_raw is not None:
-    #     for line in lines_raw:
-    #         x1,y1,x2,y2 = line[0]
-    #         cv2.line(line_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+    return mask
+
+def pd_lr(frame, crs):
+    mask = solve_the_frame(frame,crs)
+
+    return solve_lr(mask)
+
+def pd_down(frame, crs, al = 0):
+
+    mask = solve_the_frame(frame,crs)
 
     return solve_pd(mask, al)
 
@@ -184,7 +223,7 @@ def main():
 
 
     cap.release()
-    cv2.destroyAllWindows
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
