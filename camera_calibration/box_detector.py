@@ -111,9 +111,9 @@ def solve_the_frame(frame, crs):
     hsv=cv2.cvtColor(blurred,cv2.COLOR_BGR2HSV)
 
     # 生成掩码，白色为观察范围
-    mask=cv2.inRange(hsv,LOWER_ORANGE,UPPER_ORANGE)
+    mask = cv2.inRange(hsv,LOWER_ORANGE,UPPER_ORANGE)
     if crs == "purple":
-        mask=cv2.inRange(hsv,LOWER_PURPLE,UPPER_PURPLE)
+        mask = cv2.inRange(hsv,LOWER_PURPLE,UPPER_PURPLE)
 
     # 创建形态学核（圆形核）
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))

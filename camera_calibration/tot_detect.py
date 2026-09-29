@@ -103,7 +103,7 @@ class State:
         self.cap0 = None  # down
         self.cap4 = None  # front
         self.cap2 = None  # left
-        self.cap1 = None # right
+        self.cap3 = None # right
         self.K = None
         self.D = None
         self.hold = 0 # robot is holding the box
@@ -215,7 +215,7 @@ def g_right(tim, tb, stm32, sl = 0, cp = 1):
     if cp == 2:
         cap = wh.cap2
     ts = 0
-    start = time.time()
+    # start = time.time()
     while ts < tim:
         stm32.send_command(0, 0, 0, x_mm=0, y_mm=0, z_dir=0, fan=wh.hold)
         time.sleep(0.2)
@@ -324,7 +324,7 @@ def adjust_face(tim, tb, stm32):
                 print("not detect")
                 break
             print(result['position_mm'][0], to_go)
-            if result['position_mm'][0] * to_go >= 0:
+            if result['position_mm'][0] * to_go >= 1:
                 print("Done")
                 break
 
@@ -426,37 +426,6 @@ def turn_until(tim, tb, stm32):
 
     stop_it(stm32)
 
-
-def go_and_get(stm32):# keep the stuff on the top
-    # front,left,un-clock,up_only_f1_0_1,air_open_01,time
-    sscmd((0, 30), stm32)
-    cmd = (0.5,0,0,0,0,3.5)
-    vx, vy, vrot, z_dir, fan, dur = cmd
-    fd = False
-    sscmd((0,0,0,1,0,3),stm32)
-    start = time.time()
-    cap_down = wh.cap0
-    while time.time() - start < dur:
-        stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=wh.hold)
-        ret,frame = cap_down.read()
-        if ret == True:
-            is_det = pd_down(frame,"orange")
-            if is_det:
-                stop_it(stm32)
-                fd = True
-                break
-        
-        time.sleep(0.02)
-
-    if fd == False:
-        return
-    
-    sscmd((0,0,0,-1,0,3),stm32)
-    sscmd((0,0,0,0,1,3),stm32)
-    sscmd((0,0,0,1,1,3),stm32)
-    sscmd((0,-30),stm32)
-    sscmd((0,0,0,-1,1,2),stm32)
-
 def get_up_slope(stm32):
     cmd = (1,0,0,0,0,2.5)
     sscmd(cmd,stm32,nstop = 1)
@@ -468,13 +437,8 @@ def get_down_slope(stm32, td = 1):
     sscmd(cmd,stm32)
 
 normal_quarter = 2
-gs_quarter = 3
+gs_quarter = 3 # for both go and stop
 
-def turn_left(stm32):
-    sscmd((0,0,1,0,0,normal_quarter),stm32)
-
-def turn_right(stm32): # for 1/4 round
-    sscmd((0,0,-1,0,0,normal_quarter),stm32)
 
 def set_begin(stm32, typ = -1):
     sscmd((0,30),stm32) # to prepare
@@ -491,13 +455,13 @@ def set_begin(stm32, typ = -1):
 
 
 def go_from_begin(stm32):
-    sscmd((0,-0.7,0,0,0,2.0), stm32) # give some space
+    # sscmd((0,-0.7,0,0,0,2.0), stm32) # give some space
+    go_left_until(2.5, 2, -1, stm32)
     print("GIVING SPACE")
     K = wh.K
     D = wh.D
     cmd = (0.5,0,0,0,0,2.5)
     vx, vy, vrot, z_dir, fan, dur = cmd
-    fd = False
     start = time.time()
     cap = wh.cap2
     while time.time() - start < dur:
@@ -553,41 +517,64 @@ def adjust_catch(cap_down, crs, dir, stm32, typ = 1):
     ddd = 10
     while True:
         ret, frame = cap_down.read()
-        if ret == False:
-            break
+        ddd -= 1
+        if ret == False: # get until ret is true
+            if ddd == 0:
+                break
+            continue
         l_d, r_d = pd_lr(frame, crs)
+        vv = 5
+        if ddd <= 5:
+            vv = 3
         if abs(l_d - r_d) > 10:
             if l_d > r_d:
-                sscmd((5,0),stm32)
+                sscmd((vv,0),stm32)
             elif r_d > l_d:
-                sscmd((-5,0),stm32)
-        ddd -= 1
+                sscmd((-vv,0),stm32)
         if ddd == 0:
             break
 
 def pt_in(stm32):
-    sscmd((0,30),stm32) # to prepare
-    sscmd((0,30),stm32)
-    sscmd((0,40),stm32)
+    sscmd((0,-30),stm32) # to prepare
+    sscmd((0,-30),stm32)
     time.sleep(0.5)
-    sscmd((-10,0),stm32)
-    sscmd((-10,0),stm32)
+    sscmd((0,-40),stm32)
+    time.sleep(0.5)
+    sscmd((-20,0),stm32)
+    sscmd((-20,0),stm32)
     sscmd((-10,0),stm32)
     sscmd((-5,0),stm32)
-    sscmd((-5,0),stm32)
-    sscmd((0,0,0,-1,0,1.5),stm32)
+    sscmd((0,0,0,-1,0,1.8),stm32) # on the top
     wh.hold = 0
     sscmd((0, 0, 0, 0, 0, 5), stm32)   # Activate suction
     sscmd((0,0,0,1,0,2),stm32)
-    sscmd((40,0),stm32)
+    sscmd((30,0),stm32)
+    sscmd((20,0),stm32)
+    sscmd((-10,0),stm32)
     set_begin(stm32)
 
-def catching(dir, crs, cap_down, ups, dwns, dt, stm32):
+def pt_out(stm32):
+    sscmd((0,-30),stm32) # to prepare
+    sscmd((0,-30),stm32)
+    time.sleep(0.5)
+    sscmd((0,-40),stm32)
+    time.sleep(0.5)
+    sscmd((-20,0),stm32)
+    sscmd((-20,0),stm32)
+    sscmd((-10,0),stm32)
+    sscmd((-5,0),stm32)
+    sscmd((0,0,0,-1,0,2.5),stm32) # need to test
+    wh.hold = 0
+    sscmd((0, 0, 0, 0, 0, 5), stm32)   # Activate suction
+    sscmd((0,0,0,1,0,2),stm32)
+    sscmd((30,0),stm32)
+    sscmd((20,0),stm32)
+    sscmd((-10,0),stm32)
+    set_begin(stm32)
+
+def catching(dir, crs, cap_down, ups, dwns, stm32):
     time.sleep(0.08)
-    ret, frame = cap_down.read()
-    if ret == True:
-        if pd_down(frame,crs) == False:
-            sscmd((0,-dir * 0.6,0,0,0,dt), stm32) # adjust
+    adjust_catch(cap_down, crs, - dir, stm32)# adjust dir,left is +
     sscmd((0.8, 0, 0, 0, 0, 0.5), stm32)   # go little
     sscmd((0, 0, 0, 0, 0, 0.1), stm32)   # Stop
     sscmd((0, 0, 0, -1, 0, dwns), stm32)  # Lower the actuator
@@ -599,13 +586,13 @@ def catching(dir, crs, cap_down, ups, dwns, dt, stm32):
     if wh.hv == 1:
         pt_in(stm32)
 
-    sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
+    # sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
 
 def go_find(cmd, crs, cap_down, ups, dwns, dt, stm32):
     discard_frames(cap_down)
     vx, vy, vrot, z_dir, fan, dur = cmd
     dir = 1
-    if vx < 0:
+    if vy < 0:
         dir = -1
     start = time.time()
     while time.time() - start < dur:
@@ -614,14 +601,14 @@ def go_find(cmd, crs, cap_down, ups, dwns, dt, stm32):
             cv2.imshow("show_r",frame)
             cv2.waitKey(1)
             print("FINDING")
-            if pd_down(frame,crs):
+            if pd_down(frame,crs) and wh.hv < 2: # can catch
                 stop_it(stm32)
                 catching(dir, crs, cap_down, ups, dwns, dt, stm32)
         
         stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=wh.hold)
         time.sleep(0.02)
 
-def find_and_get(clr, stm32, typ = 0):
+def find_and_get(clr, stm32):
     # Move forward until the block is detected, then catch it
     set_begin(stm32)
     if clr == 0:
@@ -641,7 +628,7 @@ def find_and_get(clr, stm32, typ = 0):
     sscmd((0.5, 0, 0, 0, 0, 1.5), stm32)
     sscmd((0.35, 0, 0, 0, 0, 1), stm32)
     sscmd((0.8,0,0,0,0,2),stm32) # for test and wait to del
-    sscmd((-0.5,0,0,0,0,0.2),stm32)
+    # sscmd((-0.5,0,0,0,0,0.2),stm32) # go back but don't need
     stop_it(stm32)
 
     cap_down = wh.cap0
@@ -650,22 +637,24 @@ def find_and_get(clr, stm32, typ = 0):
         cap_down.read()
         time.sleep(0.1)
 
-    cmd = (0.05, 0.5, 0.0, 0, 0, ztim)
-    go_find(cmd, crs, cap_down, stm32)
-    cmd = (0.05, -0.5, 0.0, 0, 0, ztim)
-    go_find(cmd, crs, cap_down, stm32)
+    if clr == 0: # orange
+        cmd = (0.05, 0.6, 0.0, 0, 0, ztim)
+        go_find(cmd, crs, cap_down,ups,dwns,dt, stm32)
+        cmd = (0.05, -0.6, 0.0, 0, 0, ztim)
+        go_find(cmd, crs, cap_down,ups,dwns,dt, stm32)
     if wh.hv == 2:
         return # if I get enough box,I will go back
-    go_find(cmd, crs, cap_down, stm32)
-    cmd = (0.05, 0.5, 0.0, 0, 0, ztim)
-    go_find(cmd, crs, cap_down, stm32)
+    cmd = (0.05, -0.6, 0.0, 0, 0, ztim)
+    go_find(cmd, crs, cap_down,ups,dwns,dt, stm32)
+    cmd = (0.05, 0.6, 0.0, 0, 0, ztim)
+    go_find(cmd, crs, cap_down,ups,dwns,dt, stm32)
 
     sscmd((0.8,0,0,0,0,0.5),stm32) # for more
     sscmd((-0.5,0,0,0,0,3),stm32) # go back
-    sscmd((0,-20), stm32)
+    sscmd((0,-20), stm32) # platform back
 
 
-def find_and_catch(clr, stm32, typ = 0):
+def find_and_catch(clr, stm32):
     # Move forward until the block is detected, then catch it
     set_begin(stm32, typ = clr)
     ### have to guarantee that the catcher went ahead
@@ -681,7 +670,7 @@ def find_and_catch(clr, stm32, typ = 0):
     sscmd((0.5, 0, 0, 0, 0, 1.5), stm32)
     sscmd((0.35, 0, 0, 0, 0, 1), stm32)
     sscmd((0.8,0,0,0,0,2),stm32) # for test and wait to del
-    sscmd((-0.5,0,0,0,0,0.2),stm32)
+    # sscmd((-0.5,0,0,0,0,0.2),stm32) # go back but don't need
     stop_it(stm32)
 
     cap_down = wh.cap0
@@ -699,7 +688,7 @@ def find_and_catch(clr, stm32, typ = 0):
             wh.hold = 1
             sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
             sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
-            sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
+            # sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
             # sscmd((0, -10), stm32)             # Move backward
             # sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
             sscmd((0.8,0,0,0,0,0.5),stm32) # for more
@@ -742,7 +731,7 @@ def find_and_catch(clr, stm32, typ = 0):
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
 
-        sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
+        # sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
 
         # sscmd((0, -10), stm32)             # Move backward
         # sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
@@ -784,7 +773,7 @@ def find_and_catch(clr, stm32, typ = 0):
         sscmd((0, 0, 0, 0, 1, 2), stm32)   # Activate suction
         sscmd((0, 0, 0, 1, 1, ups), stm32)   # Raise the actuator
 
-        sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
+        # sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
         # sscmd((0, -10), stm32)             # Move backward
         # sscmd((0, 0, 0, -1, 1, 2), stm32)   # Lower the actuator and keep suction on
         sscmd((0.02, 0.5, 0, 0, 1, th_time), stm32) # Return to the original position
@@ -795,7 +784,7 @@ def find_and_catch(clr, stm32, typ = 0):
         return
 
     stop_it(stm32)
-    sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
+    # sscmd((-0.5,0,0,0,0,0.2),stm32) # little back
     sscmd((0.02, 0.5, 0, 0, 1, ztim), stm32)# Return to the original position
     sscmd((0.8,0,0,0,0,0.5),stm32) # for more
     sscmd((-0.5,0,0,0,0,3),stm32)
@@ -803,18 +792,27 @@ def find_and_catch(clr, stm32, typ = 0):
 
 
 def catch_purple(stm32):
+    sscmd((0,-0.7,0,0,0,0.5), stm32) # give some space to see the ArUco3 then
     g_left(gs_quarter, 3, stm32)
     adjust_face(2, 3, stm32)
-    find_and_catch(1, stm32,typ = 1)
+    find_and_get(1,stm32)
+    # find_and_catch(1, stm32)
+    sscmd((-0.5,0,0,0,0,2),stm32)
+    g_right(gs_quarter + 0.5, 4,stm32)
 
 
 def put_down(stm32):
-    sscmd((0, 20), stm32)
-    sscmd((0, 20), stm32)
-    sscmd((0, 0, 0, -1, 1, 2.5), stm32)   # Lower the actuator and keep suction on
-    wh.hold = 0
-    sscmd((0, 0, 0, 0, 0, 5), stm32)   # Wait for a moment
-    sscmd((0, 0, 0, 1, 0, 3), stm32)   # Raise the actuator and turn off suction
+    while wh.hv > 0:
+        if wh.hold > 0:
+            sscmd((0, 20), stm32)
+            sscmd((0, 20), stm32)
+            sscmd((0, 0, 0, -1, 1, 2.5), stm32)   # Lower the actuator and keep suction on
+            wh.hold = 0
+            wh.hv -= 1 # the box is already away from the robot
+            sscmd((0, 0, 0, 0, 0, 5), stm32)   # Wait for a moment
+            sscmd((0, 0, 0, 1, 0, 3), stm32)   # Raise the actuator and turn off suction
+        else:
+            pt_out(stm32)
 
 def go_go_go(stm32):
     set_begin(stm32)
@@ -831,7 +829,7 @@ def go_go_go(stm32):
     # return
     ttt = 0
     while True:
-        left_to_right(stm32, 6, 1000)
+        left_to_right(stm32, 6, 900) # give more space
         g_left(gs_quarter , 4 ,stm32) # watch ArUco4
 
         sscmd((-0.5,0,0,0,0,2),stm32)
@@ -890,12 +888,9 @@ def main():
 
     stm32 = None
 
-    lst_time = time.time()
-
     # Initialize communication
 
     stm32 = STM32Comm(port='/dev/ttyS0', baudrate=115200, enable=True)
-
 
     try:
 
@@ -914,10 +909,10 @@ def main():
         wh.cap2.set(cv2.CAP_PROP_FRAME_WIDTH,640)
         wh.cap2.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
 
-        # wh.cap1 = cv2.VideoCapture(2, cv2.CAP_V4L2)
-        # wh.cap1.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        # wh.cap1.set(cv2.CAP_PROP_FRAME_WIDTH,640)
-        # wh.cap1.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+        # wh.cap3 = cv2.VideoCapture(1, cv2.CAP_V4L2) # need to fill the number
+        # wh.cap3.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        # wh.cap3.set(cv2.CAP_PROP_FRAME_WIDTH,640)
+        # wh.cap3.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
 
         wh.K, wh.D = load_camera_params()
 
@@ -932,18 +927,19 @@ def main():
                 if vl == -1:
                     set_begin(stm32)
                 elif vl == 1:
-                    turn_left(stm32)
+                    pt_in(stm32)
                 elif vl == 2:
-                    turn_right(stm32)
+                    pt_out(stm32)
                 elif vl == 3:
-                    go_and_get(stm32)
+                    w1 = float(input("color:"))
+                    find_and_get(w1, stm32)
                 elif vl == 4:
                     get_up_slope(stm32)
                 elif vl == 5:
                     go_from_begin(stm32)
                 elif vl == 6:
-                    typ = int(input("time:"))
-                    find_and_catch(typ, stm32)
+                    clr = int(input("color:"))
+                    find_and_catch(clr, stm32)
                 elif vl == 7:
                     left_to_right(stm32, 8,650)
                 elif vl == 8:
@@ -962,7 +958,9 @@ def main():
                     w2 = float(input("tb:"))
                     g_left(w1,w2,stm32)
                 elif vl == 13:
-                    turn_until(2,4,stm32)
+                    w1 = float(input("time:"))
+                    w2 = float(input("tb:"))
+                    turn_until(w1,w2,stm32)
 
                 elif vl == 21:
                     catch_purple(stm32)
@@ -974,7 +972,7 @@ def main():
                 elif vl == 62:
                     g_right(gs_quarter*2,2,stm32,cp = 2)
                 elif vl == 63:
-                    g_left(gs_quarter * 2 + 0.1, 6, stm32)
+                    g_left(gs_quarter * 2 + 0.1, 3, stm32)
 
                 elif vl == 100:
                     go_go_go(stm32)
@@ -992,7 +990,7 @@ def main():
         wh.cap0.release()
         wh.cap4.release()
         wh.cap2.release()
-        # wh.cap1.release()
+        # wh.cap3.release()
 
         if stm32 is not None:
             stm32.close()
@@ -1000,10 +998,13 @@ def main():
         print("[DEBUG] End")
 
     finally:
+        
+        stm32.send_command(0, 0, 0, 0, 0, 0, 0)
+
         wh.cap0.release()
         wh.cap4.release()
         wh.cap2.release()
-        # wh.cap1.release()
+        # wh.cap3.release()
 
         if stm32 is not None:
             stm32.close()
