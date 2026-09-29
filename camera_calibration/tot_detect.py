@@ -481,29 +481,9 @@ def go_from_begin(stm32):
     print("FINISH FIRST WALKING")
     stop_it(stm32)
 
-
 def left_to_right(stm32, tim, dist):
     go_until(tim, 5, dist, stm32)
 
-def right_to_left(stm32, tim):
-    cmd = (0.5,0,0,0,0,tim)
-    vx, vy, vrot, z_dir, fan, dur = cmd
-    stm32.send_command(vx, vy, vrot, x_mm=0, y_mm=0, z_dir=int(z_dir), fan=wh.hold)
-    start = time.time()
-    while time.time() - start < dur:
-        ret,frame = wh.cap4.read()
-        if ret == False:
-            time.sleep(0.02)
-            continue
-        cv2.imshow("show",frame)
-        cv2.waitKey(1)
-        result = _pose_id(1, frame, wh.K, wh.D)
-        if result['is_detected']:
-            if result['position_mm'][2] * (-1) <= 1000:
-                break
-        time.sleep(0.02)
-
-    stop_it(stm32)
 
 def adjust_catch(cap_down, crs, dir, stm32, typ = 1):
     dt = 0.5
@@ -941,9 +921,9 @@ def main():
                     clr = int(input("color:"))
                     find_and_catch(clr, stm32)
                 elif vl == 7:
-                    left_to_right(stm32, 8,650)
+                    left_to_right(stm32, 8, 650)
                 elif vl == 8:
-                    right_to_left(stm32, 3)
+                    left_to_right(stm32, 8, 650)
                 elif vl == 9:
                     adjust_face(2, 4,stm32)
                 elif vl == 10:
